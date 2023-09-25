@@ -47,7 +47,7 @@ struct State
 STATE;
 
 static
-jmp_buf	 jbuf, jif, ERROR_JMP[NUM_ERROR];
+jmp_buf	jbacktrack, jbuf, jif, ERROR_JMP[NUM_ERROR];
 
 
 static 
@@ -79,6 +79,8 @@ size_t defstacklen, ifeqtop, DIVERT_LENS[DIVERT_NUM];
 #define SET_JMP(ID) int jres = setjmp(BUILTINS[ID].jbuf); 	\
 			!jres ? longjmp(BUILTINS[ID].jdfl, ID) : jres;
 
+#define BACKTRACK(MSG) longjmp(jbacktrack, MSG)
+
 #define ENTRY_FIND(ENT) hsearch((ENTRY){ .key = ENT }, FIND)
 
 static void
@@ -89,6 +91,8 @@ m4_incr(void)
 	uint8_t *num = &STATE.argv[1];
 	int64_t inum = strtoll(num, NULL, 10);
 	fprintf(foutp, "%ld\n", ++inum);
+
+	BACKTRACK(INCR_DONE);
 }
 
 static void
@@ -99,6 +103,8 @@ m4_decr(void)
 	uint8_t *num = &STATE.argv[1];
 	int64_t inum = strtoll(num, NULL, 10);
 	fprintf(foutp, "%ld\n", --inum);
+
+	BACKTRACK(DECR_DONE);
 }
 
 
@@ -109,6 +115,8 @@ m4_m4wrap(void)
 	
 	uint8_t wraptext = &STATE.argv[1];
 	fputs(wraptext, wrapspace);
+
+	BACKTRACK(M4WRAP_DONE);
 }
 
 
@@ -134,7 +142,8 @@ m4_divert(void)
 	{
 		foutphold = foutp; foutp = DIVERTS[yynbuf]; ++divnum;
 	}
-
+	
+	BACKTRACK(DIVERT_DONE);
 }
 
 
@@ -155,6 +164,8 @@ m4_undivert(void)
 
 	fputs(DIVERT_STRS[yynbuf], foutp);
 	ftruncte(fileno(DIVERTS[yynbuf]), 0);
+
+	BACKTRACK(UNDIVERT_DONE);
 }
 
 
@@ -164,6 +175,8 @@ m4_divnum(void)
 	SET_JMP(ID_DIVNUM);
 
 	fprintf(foutp, "%ld", divnum);
+
+	BACKTRACK(DIVNUM_DONE);
 }
 
 
@@ -173,6 +186,8 @@ m4_dnl(void)
 	SET_JMP(ID_DNL);
 
 	while (fgetc(finp) != '\n'); fgetc(finp);
+
+	BACKTRACK(DNL_DONE);
 }
 
 
@@ -186,6 +201,8 @@ m4_eval(void)
 	yyfinal = 0; eval_yy_init(&STATE.argv[1]); eval_yy_parse();
 	
 	printf(foutp, "%ld\n", yyfinal);
+
+	BACKTRACK(EVAL_DONE);
 
 }
 
@@ -208,8 +225,8 @@ m4_ifdef(void)
 
 	cursym = ENTRY_FIND(focalsym);
 	cursym 	
-		? longjmp(jif, IF_DEF)
-	        : longjmp(jif, IF_NDEF);	
+		? BACKTRACK(IF_DEF)
+	        : BACKTRACK(IF_NDEF);	
 }
 
 static void
@@ -243,7 +260,7 @@ pushifeq:
 				: &STATE.argv[m];
 			goto fill;
 done:
-			longjmp(jifelse, IFELSE_DONE);
+			BACKTRACK(IFELSE_DONE);
 			break;
 	}
 }
@@ -254,7 +271,7 @@ m4_index(void)
 {
 	SET_JMP(ID_INDEX);
 
-	if (STATE.argc == 1)
+	if (STATE.argc < 2)
 		longjmp(ERROR_JMP[ERRID_INDEX], NO_CHAR);
 
 	uint8_t *haystack = &STATE.argv[1], *needle = &STATE.argv[2];
@@ -262,4 +279,22 @@ m4_index(void)
 	
 	fprintf(foutp, "%lu", idx);
 
+	BACKTRACK(INDEX_DONE);
 }
+
+static void
+m4_len(void)
+{
+	SET_JMP(ID_LEN);
+
+	if (STATE.argc < 1)
+		longjmp(ERROR_JMP[ERRID_LEN], NO_STR);
+
+	uint8_t *subject = &STATE.argv[1];
+	size_t lensubj = strlen(subject);
+
+	fprintf(foutp, "%lu", lensubj);
+	
+	BACKTRACK(LEN_DONE);
+}
+
