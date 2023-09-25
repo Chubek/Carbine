@@ -9,6 +9,7 @@
 #include <search.h>
 #include <setjmp.h>
 #include <regexp.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <hs.h>
 
@@ -34,7 +35,7 @@ struct UserDefined
 	uint8_t name[NAMELEN_MAX];
 	uint8_t defn[MAX_DEFN];
 }
-USER_DEFN[MAX_USER_DEFN];
+USER_DEFN[MAX_USER_DEFN], DEFN_STACK[MAX_DEFN_STACK];
 
 static 
 struct State
@@ -54,13 +55,13 @@ static
 ENTRY *currsym;
 
 static 
-FILE  *finp, *foutp, *fpri, *foutphold, *wrapspace,  		\
-      *currincl, *nulldivert, *defstack,			\
+FILE  *finp, *foutp, *fpri, *foutphold,  		\
+      *currincl, *nulldivert, *wrapspace,			\
       *DIVERTS[DIVERT_NUM], *currdivert;
 
 static 
 uint8_t lquote[SYNT_NUM], rquote[SYNT_NUM], comment[SYNT_NUM], \
-	*wrapstr, *defstackstr, DIVERT_STRS[DIVERT_NUM]	       \
+	*wrapstr, DIVERT_STRS[DIVERT_NUM]	       \
 	*focalsym, *ifdef, *ifndef;
 
 static
@@ -71,10 +72,10 @@ struct IfEqElse
 IFEQ_STACK[IFEQ_MAX];
 
 static 
-int64_t shexcode, divnum, defntop;
+int64_t shexcode, divnum, defntop, stacktop;
 
 static 
-size_t defstacklen, ifeqtop, DIVERT_LENS[DIVERT_NUM];
+size_t ifeqtop, DIVERT_LENS[DIVERT_NUM];
 
 #define SET_JMP(ID) int jres = setjmp(BUILTINS[ID].jbuf); 	\
 			!jres ? longjmp(BUILTINS[ID].jdfl, ID) : jres;
@@ -296,5 +297,24 @@ m4_len(void)
 	fprintf(foutp, "%lu", lensubj);
 	
 	BACKTRACK(LEN_DONE);
+}
+
+static void
+m4_mkstemp(void)
+{
+	SET_JMP(ID_MKSTEMP);
+
+	char *temp;
+	int fdesc;
+	if (STATE.argc < 1)
+		temp = DEFAULT_TMP_TEMP;
+	else
+		temp = &STATE.argv[1];
+	if ((fdesc = mkstemp(temp)) < 0)
+		longjmp(ERROR_JMP[ERRID_MKSTEMP], errno);
+	else
+		close(fdesc);
+
+	BACKTRACK(MKSTEMP_DONE);
 }
 
