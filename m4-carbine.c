@@ -6,7 +6,6 @@
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
-#include <search.h>
 #include <setjmp.h>
 #include <regexp.h>
 #include <errno.h>
@@ -51,8 +50,6 @@ static
 jmp_buf	jbacktrack, jbuf, jif, ERROR_JMP[NUM_ERROR];
 
 
-static 
-ENTRY *currsym;
 
 static 
 FILE  *finp, *foutp, *fpri, *foutphold,  		\
@@ -98,11 +95,11 @@ m4_incr(void)
 
 	BACKTRACK(INCR_DONE);
 }
-
+ 
 static void
 m4_decr(void)
 {
-	SET_JMP(ID_DECR);
+ 	SET_JMP(ID_DECR);
 
 	uint8_t *num = &STATE.argv[1];
 	int64_t inum = strtoll(num, NULL, 10);
@@ -132,19 +129,20 @@ m4_divert(void)
 	char *nbuf = &STATE.argv[1];
 	
 	if (!(*nbuf))
-		longjmp(ERR_JMP[ERRID_DIVERT], NO_NBUF);
+		EJMP(ERRID_DIVERT, NO_NBUF);
 	
 	int8_t yynbuf = atoi(nbuf);
 	
 	if (yynbuf > DIVERT_NUM) 
-		EJMP(ERRID_DIVERT], DIVERT_INSUFF);
+		EJMP(ERRID_DIVERT, DIVERT_INSUFF);
 	else if (yynbuf < 0) 
 	{
 		foutphold = foutp; foutp = nulldivert;
 	}
 	else
 	{
-		foutphold = foutp; foutp = DIVERTS[yynbuf]; ++divnum;
+		foutphold = foutp; foutp = DIVERTS[yynbuf]; 
+		divnum = fileno(foutp);
 	}
 	
 	BACKTRACK(DIVERT_DONE);
@@ -163,7 +161,7 @@ m4_undivert(void)
 
 	int8_t yynbuf = atoi(nbuf);
 	
-       	foutp = foutphold; --divnum;
+       	foutp = foutphold; divnum = fileno(foutp);
 	if (yynbuf < 0) return;
 
 	fputs(DIVERT_STRS[yynbuf], foutp);
@@ -376,4 +374,20 @@ m4_include(void)
 	fclose(currincl); currincl = NULL;
 
 	BACKTRACK(INCLUDE_DONE);
+}
+
+static void
+m4_substr(void)
+{
+	SET_JMP(ID_SUBSTR);
+
+	if (STATE.argc < SUBSTR_LEAST_ARGC)
+		EJMP(ERRID_SUBSTR, NO_ARGC);
+
+	uint8_t *string = STATE.argv[1];
+	ssize_t offset = atol(STATE.argv[2]), numchr = STATE.argc == 3
+							? atol(STATE.argv[3])
+							: strlen(string);
+	uint8_t
+	
 }
