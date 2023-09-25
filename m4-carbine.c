@@ -62,7 +62,7 @@ FILE  *finp, *foutp, *fpri, *foutphold,  		\
 static 
 uint8_t lquote[SYNT_NUM], rquote[SYNT_NUM], comment[SYNT_NUM], \
 	*wrapstr, DIVERT_STRS[DIVERT_NUM]	       \
-	*focalsym, *ifdef, *ifndef;
+	*focalsym, *ifdef, *ifndef, *currline;
 
 static
 struct IfEqElse
@@ -75,7 +75,10 @@ static
 int64_t shexcode, divnum, defntop, stacktop;
 
 static 
-size_t ifeqtop, DIVERT_LENS[DIVERT_NUM];
+size_t ifeqtop, currlinelen, DIVERT_LENS[DIVERT_NUM];
+
+#define None
+#define Some(V) V & 1
 
 #define SET_JMP(ID) int jres = setjmp(BUILTINS[ID].jbuf); 	\
 			!jres ? longjmp(BUILTINS[ID].jdfl, ID) : jres;
@@ -134,7 +137,7 @@ m4_divert(void)
 	int8_t yynbuf = atoi(nbuf);
 	
 	if (yynbuf > DIVERT_NUM) 
-		longjmp(ERROR_JMP[ERRID_DIVERT], DIVERT_INSUFF);
+		EJMP(ERRID_DIVERT], DIVERT_INSUFF);
 	else if (yynbuf < 0) 
 	{
 		foutphold = foutp; foutp = nulldivert;
@@ -220,9 +223,9 @@ m4_ifdef(void)
 	ifndef = &STATE.argv[3];
 	
 	if (!(*focalsym))
-		longjmp(ERROR_JMP[ERRID_IFDEF], NO_IFSYM);
+		EJMP(ERRID_IFDEF, NO_IFSYM);
 	else if (!(*ifdef))
-		longjmp(ERROR_JMP[ERRID_IFDEF], NO_DEFSYM);
+		EJMP(ERRID_IFDEF, NO_DEFSYM);
 
 	cursym = ENTRY_FIND(focalsym);
 	cursym 	
@@ -243,7 +246,7 @@ m4_ifelse(void)
 		case 0:
 		case 1:
 		case 2:
-			longjmp(ERROR_JMP[ERRID_IFELSE], ARGC_INSUFF);
+			EJMP(ERRID_IFELSE, ARGC_INSUFF);
 			break;
 		default:
 fill:
@@ -272,8 +275,8 @@ m4_index(void)
 {
 	SET_JMP(ID_INDEX);
 
-	if (STATE.argc < 2)
-		longjmp(ERROR_JMP[ERRID_INDEX], NO_CHAR);
+	if (STATE.argc < )
+		EJMP(ERRID_INDEX, NO_CHAR);
 
 	uint8_t *haystack = &STATE.argv[1], *needle = &STATE.argv[2];
 	size_t idx = strspn(haystack, needle);
@@ -288,8 +291,8 @@ m4_len(void)
 {
 	SET_JMP(ID_LEN);
 
-	if (STATE.argc < 1)
-		longjmp(ERROR_JMP[ERRID_LEN], NO_STR);
+	if (STATE.argc < LEN_LEAST_ARGC)
+		EJMP(ERRID_LEN, NO_STR);
 
 	uint8_t *subject = &STATE.argv[1];
 	size_t lensubj = strlen(subject);
@@ -306,15 +309,69 @@ m4_mkstemp(void)
 
 	char *temp;
 	int fdesc;
-	if (STATE.argc < 1)
+	if (STATE.argc < MKSTEMP_LEAST_ARGC)
 		temp = DEFAULT_TMP_TEMP;
 	else
 		temp = &STATE.argv[1];
 	if ((fdesc = mkstemp(temp)) < 0)
-		longjmp(ERROR_JMP[ERRID_MKSTEMP], errno);
+		EJMP(ERRID_MKSTEMP, errno);
 	else
 		close(fdesc);
 
 	BACKTRACK(MKSTEMP_DONE);
 }
 
+static void
+m4_shift(void)
+{
+	SET_JMP(ID_SHIFT);
+
+	if (STATE.argc < SHIFT_LEAST_ARGC)
+		EJMP(ERRID_SHIFT, NO_ARGC);
+
+	size_t shfnum = 2;	
+	while (shfnum < STATE.argc)
+		fputs(&STATE.argv[shfnum++], foutp);
+	
+	BACKTRACK(SHIFT_DONE);
+}
+
+static void
+m4_sinclude(void)
+{
+	SET_JMP(ID_SINCLUDE);
+
+	if (STATE.argc < SINCL_LEAST_ARGC)
+		EJMP(ERRID_SINCLUDE, NO_ARGC);
+			
+	char *file = &STATE.argv[1];
+	currincl = fopen(file, "r"); !currincl 
+						? BACKTRACK(SINCL_SILENT_FAIL)
+						: None;
+	while ((getline(&currline, &currlinelen, currincl)) > 0)
+	{
+		fputs(currline, foutp);
+	}
+	fclose(currincl); currincl = NULL;
+
+	BACKTRACK(SINCL_DONE);
+}
+
+static void
+m4_include(void)
+{
+	SET_JMP(ID_SINCLUDE);
+
+	if (STATE.argc < SINCL_LEAST_ARGC)
+		EJMP(ERRID_INCLUDE, NO_ARGC);
+			
+	char *file = &STATE.argv[1];
+	currincl = fopen(file, "r"); !currincl 
+					? EJMP(ERRID_IO, errno)
+					: None;
+	while ((getline(&currline, &currlinelen, currincl)) > 0)
+	{
+		fputs(currline, foutp);
+	}
+	fclose(currincl); currincl = NULL;
+}
