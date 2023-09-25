@@ -43,7 +43,7 @@ struct State
 {
 	uint8_t   name[NAMELEN_MAX];
 	uint8_t   argv[ARGVLEN_MAX][ARGV_MAX];
-	size_t    argc;
+	size_t    argc, argvlen[ARGV_MAX];
 	char 	  outfile[FILENAME_MAX], infile[FILENAME_MAX];
 }  
 STATE;
@@ -132,12 +132,12 @@ m4_divert(void)
 	char *nbuf = &STATE.argv[1];
 	
 	if (!(*nbuf))
-		EJMP(ERRID_DIVERT, NO_NBUF);
+		REJECT(ERRID_DIVERT, NO_NBUF);
 	
 	int8_t yynbuf = atoi(nbuf);
 	
 	if (yynbuf > DIVERT_NUM) 
-		EJMP(ERRID_DIVERT, DIVERT_INSUFF);
+		REJECT(ERRID_DIVERT, DIVERT_INSUFF);
 	else if (yynbuf < 0) 
 	{
 		foutphold = foutp; foutp = nulldivert;
@@ -224,9 +224,9 @@ m4_ifdef(void)
 	ifndef = &STATE.argv[3];
 	
 	if (!(*focalsym))
-		EJMP(ERRID_IFDEF, NO_IFSYM);
+		REJECT(ERRID_IFDEF, NO_IFSYM);
 	else if (!(*ifdef))
-		EJMP(ERRID_IFDEF, NO_DEFSYM);
+		REJECT(ERRID_IFDEF, NO_DEFSYM);
 
 	cursym = ENTRY_FIND(focalsym);
 	cursym 	
@@ -247,7 +247,7 @@ m4_ifelse(void)
 		case 0:
 		case 1:
 		case 2:
-			EJMP(ERRID_IFELSE, ARGC_INSUFF);
+			REJECT(ERRID_IFELSE, ARGC_INSUFF);
 			break;
 		default:
 fill:
@@ -277,7 +277,7 @@ m4_index(void)
 	SET_JMP(ID_INDEX);
 
 	if (STATE.argc < )
-		EJMP(ERRID_INDEX, NO_CHAR);
+		REJECT(ERRID_INDEX, NO_CHAR);
 
 	uint8_t *haystack = &STATE.argv[1], *needle = &STATE.argv[2];
 	size_t idx = strspn(haystack, needle);
@@ -293,7 +293,7 @@ m4_len(void)
 	SET_JMP(ID_LEN);
 
 	if (STATE.argc < LEN_LEAST_ARGC)
-		EJMP(ERRID_LEN, NO_STR);
+		REJECT(ERRID_LEN, NO_STR);
 
 	uint8_t *subject = &STATE.argv[1];
 	size_t lensubj = strlen(subject);
@@ -315,7 +315,7 @@ m4_mkstemp(void)
 	else
 		temp = &STATE.argv[1];
 	if ((fdesc = mkstemp(temp)) < 0)
-		EJMP(ERRID_MKSTEMP, errno);
+		REJECT(ERRID_MKSTEMP, errno);
 	else
 		close(fdesc);
 
@@ -328,7 +328,7 @@ m4_shift(void)
 	SET_JMP(ID_SHIFT);
 
 	if (STATE.argc < SHIFT_LEAST_ARGC)
-		EJMP(ERRID_SHIFT, NO_ARGC);
+		REJECT(ERRID_SHIFT, NO_ARGC);
 
 	size_t shfnum = 2;	
 	while (shfnum < STATE.argc)
@@ -343,7 +343,7 @@ m4_sinclude(void)
 	SET_JMP(ID_SINCLUDE);
 
 	if (STATE.argc < SINCL_LEAST_ARGC)
-		EJMP(ERRID_SINCLUDE, NO_ARGC);
+		REJECT(ERRID_SINCLUDE, NO_ARGC);
 			
 	char *file = &STATE.argv[1];
 	currincl = fopen(file, "r"); !currincl 
@@ -364,11 +364,11 @@ m4_include(void)
 	SET_JMP(ID_INCLUDE);
 
 	if (STATE.argc < SINCL_LEAST_ARGC)
-		EJMP(ERRID_INCLUDE, NO_ARGC);
+		REJECT(ERRID_INCLUDE, NO_ARGC);
 			
 	char *file = &STATE.argv[1];
 	currincl = fopen(file, "r"); !currincl 
-					? EJMP(ERRID_IO, errno)
+					? REJECT(ERRID_IO, errno)
 					: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
@@ -385,7 +385,7 @@ m4_substr(void)
 	SET_JMP(ID_SUBSTR);
 
 	if (STATE.argc < SUBSTR_LEAST_ARGC)
-		EJMP(ERRID_SUBSTR, NO_ARGC);
+		REJECT(ERRID_SUBSTR, NO_ARGC);
 
 	uint8_t *string = STATE.argv[1];
 	ssize_t offset = atol(STATE.argv[2]), numchr = STATE.argc == 3
@@ -403,9 +403,56 @@ m4_syscmd(void)
 	SET_JMP(ID_SYSCMD);
 
 	if (STATE.argc < SYSCMD_LEAST_ARGC)
-		EJMP(ERRID_SYSCMD, NO_ARGC);
+		REJECT(ERRID_SYSCMD, NO_ARGC);
 
-	uint8_t *cmd = STATE.argv[1]; system(cmd);
+	uint8_t *cmd = STATE.argv[1]; shexcode = system(cmd);
 
 	BACKTRACK(SYSCMD_DONE);
 }
+
+static void
+m4_sysval(void)
+{
+	SET_JMP(ID_SYSVAL);
+
+	fprintf(foutp, "%ld", shexcode);
+
+	BACKTRACK(SYSVAL_DONE);
+}
+
+
+static void
+m4_translit(void)
+{
+	SET_JMP(ID_TRANSLIT);
+
+	if (STATE.argc < TRANSLIT_LEAST_ARGC)
+		REJECT(ERRID_TRANSLIT, NO_ARGC);
+
+	uint8_t *corp = STATE.argv[1],	\
+		*this = STATE.argv[2],	\
+		*with = STATE.argv[3], *rem, lchr;
+	size_t  lencorp = STATE.argvlen[1],	\
+		lenthis = STATE.argvlen[2],	\
+	      	lenwith = STATE.argvlen[3];
+
+	lenwith < lencorp
+		? (corp[lenwith - 1] = '\0', lencorp = lenwith)
+		: (lenthis < lencorp
+			? (rem = strndupa(corp, lencorp), 
+				rem[lenthis - 1] = '\0',
+				corp = &corp[lenthis - 1], 
+				lencorp = lenthis)
+			: (with[lencorp - 1] = '\0', this[lencorp - 1] = '\0'),
+		  );
+
+	uint8_t TRANTBL[UINT8_MAX];
+	while ((lchr = *this++)) 
+		TRANTBL[lchr] = *with++;
+	for (int i = 0; i < lencorp; i++)
+		corp[i] = TRANTBL[corp[i]];
+	if (rem) fputs(rem, foutp);
+	fputs(corp, foutp);
+
+}
+
