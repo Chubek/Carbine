@@ -354,13 +354,13 @@ m4_sinclude(void)
 	}
 	fclose(currincl); currincl = NULL;
 
-	BACKTRACK(SINCL_DONE);
+	BACKTRACK(SINCLUDE_DONE);
 }
 
 static void
 m4_include(void)
 {
-	SET_JMP(ID_SINCLUDE);
+	SET_JMP(ID_INCLUDE);
 
 	if (STATE.argc < SINCL_LEAST_ARGC)
 		EJMP(ERRID_INCLUDE, NO_ARGC);
@@ -374,4 +374,6 @@ m4_include(void)
 		fputs(currline, foutp);
 	}
 	fclose(currincl); currincl = NULL;
+
+	BACKTRACK(INCLUDE_DONE);
 }
