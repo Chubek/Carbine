@@ -453,6 +453,7 @@ m4_translit(void)
 		corp[i] = TRANTBL[corp[i]];
 	if (rem) fputs(rem, foutp);
 	fputs(corp, foutp);
-
+	
+	BACKTRACK(TRANSLIT_DONE);
 }
 
