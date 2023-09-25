@@ -74,6 +74,7 @@ IFEQ_STACK[IFEQ_MAX];
 static 
 int64_t shexcode, divnum, defntop, stacktop;
 
+
 static 
 size_t ifeqtop, DIVERT_LENS[DIVERT_NUM];
 
