@@ -1,0 +1,10 @@
+*.swp
+*.swap
+*.temp
+*.tmp
+build/
+temp/
+_*
+*.out
+a.awk
+
