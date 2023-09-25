@@ -254,5 +254,12 @@ m4_index(void)
 {
 	SET_JMP(ID_INDEX);
 
+	if (STATE.argc == 1)
+		longjmp(ERROR_JMP[ERRID_INDEX], NO_CHAR);
+
+	uint8_t *haystack = &STATE.argv[1], *needle = &STATE.argv[2];
+	size_t idx = strspn(haystack, needle);
+	
+	fprintf(foutp, "%lu", idx);
 
 }
