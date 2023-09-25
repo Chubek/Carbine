@@ -14,6 +14,8 @@
 
 
 #include "_eval.yy.c"
+#include "ohash.h"
+
 
 #ifndef DEV_NULL
 #define DEV_NULL "/dev/null"
@@ -49,7 +51,8 @@ STATE;
 static
 jmp_buf	jbacktrack, jbuf, jif, ERROR_JMP[NUM_ERROR];
 
-
+static
+struct ohash *SYMTABL;
 
 static 
 FILE  *finp, *foutp, *fpri, *foutphold,  		\
@@ -388,6 +391,21 @@ m4_substr(void)
 	ssize_t offset = atol(STATE.argv[2]), numchr = STATE.argc == 3
 							? atol(STATE.argv[3])
 							: strlen(string);
-	uint8_t
-	
+	string = &string[offset]; string[numchr - 1] = '\0';
+	fputs(string, foutp);
+
+	BACKTRACK(SUBSTR_DONE);
+}
+
+static void
+m4_syscmd(void)
+{
+	SET_JMP(ID_SYSCMD);
+
+	if (STATE.argc < SYSCMD_LEAST_ARGC)
+		EJMP(ERRID_SYSCMD, NO_ARGC);
+
+	uint8_t *cmd = STATE.argv[1]; system(cmd);
+
+	BACKTRACK(SYSCMD_DONE);
 }
