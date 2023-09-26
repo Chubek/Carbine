@@ -10,8 +10,7 @@
 #include <regexp.h>
 #include <errno.h>
 #include <sys/types.h>
-#include <hs.h>
-
+#include <signal.h>
 
 #include "_eval.yy.c"
 #include "ohash.h"
@@ -457,3 +456,20 @@ m4_translit(void)
 	BACKTRACK(TRANSLIT_DONE);
 }
 
+static void
+m4_traceon(void)
+{
+	SET_JMP(ID_TRACEON);
+
+	if (TRACER.ison)
+		REJECT(ERRID_TRACEON, TRACER_ALREADY_ON);
+
+	TRACER.procid = fork();
+	pipe(TRACER.pipefd);
+	TRACER.pipein = fdopen(TRACER.pipefd[0]);
+	TRACER.pipeout = fdopen(TRACER.pipefd[1]);
+	if (!TRACER.procid)
+	{
+		
+	}
+}
