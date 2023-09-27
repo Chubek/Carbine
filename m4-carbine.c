@@ -13,8 +13,8 @@
 #include <signal.h>
 
 #include "_eval.yy.c"
-#include "ohash.h"
-
+#include "gl_hash_map.h"
+#include "stack.h"
 
 #ifndef DEV_NULL
 #define DEV_NULL "/dev/null"
@@ -51,7 +51,8 @@ static
 jmp_buf	jbacktrack, jbuf, jif, ERROR_JMP[NUM_ERROR];
 
 static
-struct ohash *SYMTABL;
+struct ohash *SYMTABLE;
+Stack_T defstack;
 
 static 
 FILE  *finp, *foutp, *fpri, *foutphold,  		\
@@ -465,11 +466,20 @@ m4_traceon(void)
 		REJECT(ERRID_TRACEON, TRACER_ALREADY_ON);
 
 	TRACER.procid = fork();
-	pipe(TRACER.pipefd);
-	TRACER.pipein = fdopen(TRACER.pipefd[0]);
-	TRACER.pipeout = fdopen(TRACER.pipefd[1]);
-	if (!TRACER.procid)
-	{
-		
-	}
+	
+}
+
+static void
+m4_define(void)
+{
+	SET_JMP(ID_DEFINE);
+
+	if (STATE.argc < DEFINE_LEAST_ARGC)
+		REJECT(ERRID_DEFINE, NO_ARGC);
+
+	uint8_t *name = STATE.argv[1];
+	uint8_t *defn = STATE.argv[2];
+
+	ohash_insert(SYMTABLE, );
+
 }
