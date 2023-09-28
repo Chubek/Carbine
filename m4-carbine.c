@@ -691,6 +691,18 @@ cookie_container_read(void *raw_cookie, char *command, size_t size)
 	uint8_t *name;
 	uint8_t *definition;
 
-	sscanf(command, "");
+	sscanf(command, CNTR_SCAN_FMT, &instruction, &name, &definition);
+
+	if (((based_cookie->total_size + 1) % SYMTAB_STEP) == 0) {
+		void *fresh_pointer = realloc(
+				baked_cookie->mem_buffer,
+				baked_cookie->total_size + SYMTAB_STEP
+			);
+		if (!fresh_pointer)
+			error_out(ERRMSG_MEMORY);
+		else
+			baked_cookie->mem_buffer = fresh_pointer;
+	}
+
 }
 
