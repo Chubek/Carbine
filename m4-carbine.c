@@ -44,12 +44,18 @@ static struct RuntimeState
 	}
 	TRACER;
 
-	static struct Symbols
+	static struct Container
 	{
-		SymbolTable *symtable;
-		SymbolStack *symstack;
+		static struct ContainerCookie
+		{
+			size_t seek_pos;
+			size_t total_size;
+			size_t realloc_step;
+			uintptr_t mem_buffer;
+		} 
+		SYMTABLE_COOKIE, SYMSTACK_COOKIE;
 	}
-	SYMBOLS;
+	CONTAINERS;
 
 	static struct Invokation
 	{
@@ -83,6 +89,15 @@ static struct RuntimeState
 		uint8_t *buffer;
 	}
 	WRAP;
+
+	static struct ParseCookie
+	{
+		mqd_t comm_channel;
+		pid_t parser_pid;
+		int state_request;
+		int parser_response;
+	}
+	PARSE_COOKIE;
 }
 STATE;
 
@@ -103,7 +118,7 @@ m4_incr(void)
 
 	uint8_t *num = ARGV_nth(1);
 	int64_t inum = strtoll(num, NULL, 10);
-	OutpuFMT(OUTSTREAM, "%ld\n", ++inum);
+	fprintf(OUTSTREAM, "%ld\n", ++inum);
 
 	BACKTRACK(INCR_DONE);
 }
@@ -115,7 +130,7 @@ m4_decr(void)
 
 	uint8_t *num = ARGV_nth(1);
 	int64_t inum = strtoll(num, NULL, 10);
-	OutpuFMT(OUTSTREAM, "%ld\n", --inum);
+	fprintf(OUTSTREAM, "%ld\n", --inum);
 
 	BACKTRACK(DECR_DONE);
 }
@@ -188,7 +203,7 @@ m4_divnum(void)
 {
 	SET_JMP(ID_DIVNUM);
 
-	OutpuFMT(OUTSTREAM, "%ld", divnum);
+	fprintf(OUTSTREAM, "%ld", divnum);
 
 	BACKTRACK(DIVNUM_DONE);
 }
@@ -199,7 +214,7 @@ m4_dnl(void)
 {
 	SET_JMP(ID_DNL);
 
-	InputFMT(INSTREAM, "%*s\n", NULL);
+	fscanf(INSTREAM, "%*s\n", NULL);
 
 	BACKTRACK(DNL_DONE);
 }
@@ -214,7 +229,7 @@ m4_eval(void)
 	
 	yyfinal = 0; eval_yy_init(ARGV_nth(1)); eval_yy_parse();
 	
-	OutpuFMT(OUTSTREAM, "%ld", yyfinal);
+	fprintf(OUTSTREAM, "%ld", yyfinal);
 
 	BACKTRACK(EVAL_DONE);
 
@@ -291,7 +306,7 @@ m4_index(void)
 	uint8_t *haystack = ARGV_nth(1), *needle = ARGV_nth(2);
 	size_t idx = strspn(haystack, needle);
 	
-	OutpuFMT(OUTSTREAM, "%lu", idx);
+	fprintf(OUTSTREAM, "%lu", idx);
 
 	BACKTRACK(INDEX_DONE);
 }
@@ -307,7 +322,7 @@ m4_len(void)
 	uint8_t *subject = ARGV_nth(1);
 	size_t lensubj = strlen(subject);
 
-	OutpuFMT(OUTSTREAM, "%lu", lensubj);
+	fprintf(OUTSTREAM, "%lu", lensubj);
 	
 	BACKTRACK(LEN_DONE);
 }
@@ -360,7 +375,7 @@ m4_sinclude(void)
 						: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
-		OutpuFMT(OUTSTREAM, "%s\n",  currline);
+		fprintf(OUTSTREAM, "%s\n",  currline);
 	}
 	fclose(currincl); currincl = NULL;
 
@@ -381,7 +396,7 @@ m4_include(void)
 					: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
-		OutpuFMT(OUTSTREAM, "%s\n", currline);
+		fprintf(OUTSTREAM, "%s\n", currline);
 	}
 	fclose(currincl); currincl = NULL;
 
@@ -401,7 +416,7 @@ m4_substr(void)
 							? atol(STATE.argv[3])
 							: strlen(string);
 	string = &string[offset]; string[numchr - 1] = '\0';
-	OutpuFMT(OUTSTREAM, string);
+	fprintf(OUTSTREAM, string);
 
 	BACKTRACK(SUBSTR_DONE);
 }
@@ -424,7 +439,7 @@ m4_sysval(void)
 {
 	SET_JMP(ID_SYSVAL);
 
-	OutpuFMT(OUTSTREAM, "%ld", shexcode);
+	fprintf(OUTSTREAM, "%ld", shexcode);
 
 	BACKTRACK(SYSVAL_DONE);
 }
@@ -461,7 +476,7 @@ m4_translit(void)
 	for (int i = 0; i < lencorp; i++)
 		corp[i] = TRANTBL[corp[i]];
 	if (rem) fputs(rem, OUTSTREAM);
-	OutpuFMT(OUTSTREAM, "%s", corp);
+	fprintf(OUTSTREAM, "%s", corp);
 	
 	BACKTRACK(TRANSLIT_DONE);
 }
@@ -476,7 +491,7 @@ m4_errprint(void)
 		REJECT(ERRID_ERRPRINT, NO_ARGC);
 
 	uint8_t *errmsg = ARGV_nth(1);
-	OutpuFMT(fpri,"%s", errmsg);
+	fprintf(PRISTREAM,"%s", errmsg);
 
 	BACKTRACK(ERRPRINT_DONE);
 }
@@ -654,14 +669,28 @@ trace_calls(void)
 {
 	if (!STATE.traceon) return;
 
-	fputs(fpri, M4_TRACE_QUIP);
-	OutpuFMT(fpri, " -%lu- ", STATE.argc);
-	OutpuFMT(fpri, "%s -> %s%s%s\n", 
+	fputs(PRISTREAM, M4_TRACE_QUIP);
+	fprintf(PRISTREAM, " -%lu- ", STATE.argc);
+	fprintf(PRISTREAM, "%s -> %s%s%s\n", 
 			&STATE.argv[0],
 			&STATE.lquote[0],
 			&STATE.lastexpand[0],
 			&STATE.rquote[0],
 		);
 	
+}
+
+
+static ssize_t 
+cookie_container_read(void *raw_cookie, char *command, size_t size)
+{
+	struct ContainerCookie
+		*baked_cookie = (struct ContainerCookie*)raw_cookie;
+
+	int instruction;
+	uint8_t *name;
+	uint8_t *definition;
+
+	sscanf(command, "");
 }
 
