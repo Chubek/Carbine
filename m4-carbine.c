@@ -13,8 +13,10 @@
 #include <sys/types.h>
 #include <signal.h>
 
+
 #include "_eval.yy.c"
 #include "gl_hash_map.h"
+#include "trie.h"
 
 typedef struct UserMacro {
 	uint8_t name[MAX_NAME], uint8_t defn[MAX_DEFN];
@@ -102,7 +104,7 @@ m4_incr(void)
 
 	uint8_t *num = &STATE.argv[1];
 	int64_t inum = strtoll(num, NULL, 10);
-	fprintf(foutp, "%ld\n", ++inum);
+	outputfmt(foutp, "%ld\n", ++inum);
 
 	BACKTRACK(INCR_DONE);
 }
@@ -114,7 +116,7 @@ m4_decr(void)
 
 	uint8_t *num = &STATE.argv[1];
 	int64_t inum = strtoll(num, NULL, 10);
-	fprintf(foutp, "%ld\n", --inum);
+	outputfmt(foutp, "%ld\n", --inum);
 
 	BACKTRACK(DECR_DONE);
 }
@@ -187,7 +189,7 @@ m4_divnum(void)
 {
 	SET_JMP(ID_DIVNUM);
 
-	fprintf(foutp, "%ld", divnum);
+	outputfmt(foutp, "%ld", divnum);
 
 	BACKTRACK(DIVNUM_DONE);
 }
@@ -290,7 +292,7 @@ m4_index(void)
 	uint8_t *haystack = &STATE.argv[1], *needle = &STATE.argv[2];
 	size_t idx = strspn(haystack, needle);
 	
-	fprintf(foutp, "%lu", idx);
+	outputfmt(foutp, "%lu", idx);
 
 	BACKTRACK(INDEX_DONE);
 }
@@ -306,7 +308,7 @@ m4_len(void)
 	uint8_t *subject = &STATE.argv[1];
 	size_t lensubj = strlen(subject);
 
-	fprintf(foutp, "%lu", lensubj);
+	outputfmt(foutp, "%lu", lensubj);
 	
 	BACKTRACK(LEN_DONE);
 }
@@ -359,7 +361,7 @@ m4_sinclude(void)
 						: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
-		fputs(currline, foutp);
+		outputfmt(foutp, "%s\n",  currline);
 	}
 	fclose(currincl); currincl = NULL;
 
@@ -380,7 +382,7 @@ m4_include(void)
 					: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
-		fputs(currline, foutp);
+		outputfmt(foutp, "%s\n", currline);
 	}
 	fclose(currincl); currincl = NULL;
 
@@ -400,7 +402,7 @@ m4_substr(void)
 							? atol(STATE.argv[3])
 							: strlen(string);
 	string = &string[offset]; string[numchr - 1] = '\0';
-	fputs(string, foutp);
+	outputfmt(foutp, string);
 
 	BACKTRACK(SUBSTR_DONE);
 }
@@ -423,7 +425,7 @@ m4_sysval(void)
 {
 	SET_JMP(ID_SYSVAL);
 
-	fprintf(foutp, "%ld", shexcode);
+	outputfmt(foutp, "%ld", shexcode);
 
 	BACKTRACK(SYSVAL_DONE);
 }
@@ -460,7 +462,7 @@ m4_translit(void)
 	for (int i = 0; i < lencorp; i++)
 		corp[i] = TRANTBL[corp[i]];
 	if (rem) fputs(rem, foutp);
-	fputs(corp, foutp);
+	outputfmt(foutp, "%s", corp);
 	
 	BACKTRACK(TRANSLIT_DONE);
 }
@@ -475,17 +477,9 @@ m4_errprint(void)
 		REJECT(ERRID_ERRPRINT, NO_ARGC);
 
 	uint8_t *errmsg = STATE.argv[1];
-
-	if (STATE.printerr) {
-		puts(tparm(tigetstr("setaf"), COLOR_RED), 1, putchar);
-		fputs(fpri, "Error: ");
-		tputs(tparm(tigetstr("sgr0")), 1, putchar);
-	}
-	fputs(fpri, errmsg);
-	fputs(PLAT_ENDLINE);
+	outputfmt(fpri,"%s", errmsg);
 
 	BACKTRACK(ERRPRINT_DONE);
-
 }
 
 static void
@@ -662,8 +656,8 @@ trace_calls(void)
 	if (!STATE.traceon) return;
 
 	fputs(fpri, M4_TRACE_QUIP);
-	fprintf(fpri, " -%lu- ", STATE.argc);
-	fprintf(fpri, "%s -> %s%s%s\n", 
+	outputfmt(fpri, " -%lu- ", STATE.argc);
+	outputfmt(fpri, "%s -> %s%s%s\n", 
 			&STATE.argv[0],
 			&STATE.lquote[0],
 			&STATE.lastexpand[0],
