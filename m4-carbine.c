@@ -17,11 +17,11 @@
 #include "gl_hash_map.h"
 
 typedef struct UserMacro {
-	uint8_t name[MAX_NAME];
-	uint8_t defn[MAX_DEFN];
+	uint8_t name[MAX_NAME], uint8_t defn[MAX_DEFN];
+	size_t poolidx;
 } umacro_t;
 
-#define GL_STACK_ELEMENT umacro_t
+#define GL_STACK_ELEMENT umacro_t*
 
 #include "stack.h"
 
@@ -29,29 +29,29 @@ typedef struct UserMacro {
 #define DEV_NULL "/dev/null"
 #endif
 
-static jmp_buf
-BUITLIN_JBUF[NUM_BUILTINS];
 
 static 
 struct State
 {
-	uint8_t   name[MAX_NAME];
+	int	  builtin_id;
 	uint8_t   argv[MAX_ARGV_NUM][MAX_ARGV_LEN];
 	size_t    argc, argvlen[MAX_ARGV_NUM];
 	char 	  outfile[FILENAME_MAX], infile[FILENAME_MAX];
-	bool      printerr;
+	bool      printerr, traceon;
 }  
 STATE;
 
 static
-jmp_buf	jbacktrack, jbuf, jif, ERROR_JMP[NUM_ERROR];
+jmp_buf	jbacktrack, jbuf, jif, 				\
+	ERROR_JBUF[NUM_ERROR], 				\
+	BUILTIN_JBUF[NUM_BUILTIN];
 
 
 static
 struct MacroPool
 {
-	size_t size;
-	umacro_t  *macros;
+	size_t allocnum;
+	umacro_t  **macros;
 }
 POOL;
 
@@ -83,6 +83,7 @@ int64_t shexcode, divnum, defntop, stacktop;
 
 static 
 size_t ifeqtop, currlinelen, DIVERT_LENS[DIVERT_NUM];
+
 
 #define None
 #define Some(V) V & 1
@@ -464,24 +465,6 @@ m4_translit(void)
 	BACKTRACK(TRANSLIT_DONE);
 }
 
-static void
-m4_traceon(void)
-{
-	SET_JMP(ID_TRACEON);
-		REJECT(ERRID_TRACEON, TRACER_ALREADY_ON);
-
-	// todo	
-}
-
-static void
-m4_traceoff(void)
-{
-	SET_JMP(ID_TRACEOFF);
-
-	// todo
-
-}
-
 
 static void
 m4_errprint(void)
@@ -520,7 +503,7 @@ m4_define(void)
 	umacro_t *new_def = define_pool(name, defn);
 
 	if (!gl_hash_nx_getput(SYMTABLE, (void*)name, (void*)new_def))
-		REJECT(ERRID_DEFINE, HASHMAP_ERR);
+		error_out(ERRMSG_SYMTABLE_ERR);
 
 	BACKTRACK(DEFINE_DONE);
 }
@@ -557,25 +540,134 @@ m4_defn(void)
 	memmove(&qdefn[0], &defn[0], strlen(&defn[0]));
 	memmove(&qdefn[0], &rquote[0], strlen(&rquote[0]));
 
-	call_builtin(ID_DEFINE, 2, qdefn, name);
+	call_builtin(ID_DEFINE, 2, BUILTIN_NAMES[ID_DEFINE], name, defn);
+}
+
+static void
+m4_pushdef(void)
+{
+	SET_JMP(ID_PUSHDEF);
+
+	if (STATE.argc < PUSHDEF_LEAST_ARGC)
+		REJECT(ERRID_PUSHDEF, NO_ARGC);
+
+	uint8_t *name = STATE.argv[1];
+	uint8_t *defn = STATE.argv[2];
+
+	check_pool_capacity();
+	umacro_t *newdef = define_pool(name, defn);
+
+	stack_push(DEFSTACK, new_def);
+
+	BACKTRACK(PUSHDEF_DONE);
+}
+
+static void
+m4_popdef(void)
+{
+	SET_JMP(ID_POPDEF);
+
+	if (STATE.argc < POPDEF_LEAST_ARGC)
+		REJECT(ERRID_POPDEF, NO_ARGC);
+
+	umacro_t *lastdef = stack_pop(DEFSTACK);
+	undefine_pool(lastdef);
+
+	BACKTRACK(POPDEF_DONE);
+}
+
+static void
+m4_traceon(void)
+{
+	SET_JMP(ID_TRACEON);
+
+	STATE.traceon = true;
+}
+
+
+static void
+m4_traceoff(void)
+{
+	SET_JMP(ID_TRACEOFF);
+
+	STATE.traceoff = false;
 }
 
 static void
 call_builtin(int id, size_t nargs, ...)
 {
+	if (nargs > MAX_BUILTIN_ARGV)
+		error_out(ERRMSG_MAX_BUILTIN_ARGV);
+
 	va_list argls;
 	va_start(argls, nargs);
+		
 	
+	clear_state();
 	STATE.builtin_id = id;
+	STATE.argc = nargs;
+
+	size_t arglen, nnargs = 0;
+	uint8_t *arg;
 
 	while (--nargs)
 	{
-		uint8_t *arg = va_arg(ap, uint8_t*);
-		memmove(&STATE.argv[nargs], arg);
-		memmove(&STATE.argvlen[nargs], strlen(arg));
+		arg = va_arg(ap, uint8_t*);
+		arglen = strlen(arg);
+		if (arglen > MAX_ARGV_LEN)
+			error_out(ERRMSG_LONGARG);
+		memmove(&STATE.argv[nnargs], arg);
+		memmove(&STATE.argvlen[nnargs++], arglen);
 	}
 
-	call_state();
+	eval_state();
+	trace_calls();
 }
 
+static inline void
+clear_state(void) { memset(&STATE, 0, sizeof(struct State)); }
 
+static inline void
+eval_state(void) { longjmp(BUILTIN_JBUF[STATE.builtin_id], true); }
+
+static inline void
+check_pool_capacity(void)
+{
+	if (((POOL.allocnum + 1) % POOL_ALLOC_STEP) == 0) {
+		void *newptr = realloc(
+			POOL.macros,
+			(POOL.allocnum + POOL_ALLOC_STEP) * sizeof(uintptr_t));
+		if (!newptr)
+			error_out(ERRMSG_POOL_REALLOC);
+		POOL.macros = (umacro_t**)newptr;
+	}
+
+}
+
+static inline void
+init_pool(void)
+{
+	void *newptr = calloc(POOL.macros, POOL_ALLOC_STEP * sizeof(uintptr_t));
+	if (!newptr)
+		error_out(ERRMSG_POOL_ALLOC);
+	POOL.macros = (umacro_t**)newptr;
+}
+
+static inline void
+kill_pool(void) {  free(POOL.macros);   }
+
+static inline void
+trace_calls(void)
+{
+	if (!STATE.traceon) return;
+
+	fputs(fpri, M4_TRACE_QUIP);
+	fprintf(fpri, " -%lu- ", STATE.argc);
+	fprintf(fpri, "%s -> %s%s%s\n", 
+			&STATE.argv[0],
+			&STATE.lquote[0],
+			&STATE.lastexpand[0],
+			&STATE.rquote[0],
+		);
+	
+}
