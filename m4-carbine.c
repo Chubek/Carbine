@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
@@ -14,45 +15,51 @@
 
 #include "_eval.yy.c"
 #include "gl_hash_map.h"
+
+typedef struct UserMacro {
+	uint8_t name[MAX_NAME];
+	uint8_t defn[MAX_DEFN];
+} umacro_t;
+
+#define GL_STACK_ELEMENT umacro_t
+
 #include "stack.h"
 
 #ifndef DEV_NULL
 #define DEV_NULL "/dev/null"
 #endif
 
-static 
-struct BuiltinData
-{ 
-	uint8_t name[NAMELEN_MAX];
-	size_t nargs;
-	jmp_buf jbuf, jdfl;
-} 
-BUILTINS[BUILTIN_NUM];
-
-static 
-struct UserDefined
-{
-	uint8_t name[NAMELEN_MAX];
-	uint8_t defn[MAX_DEFN];
-}
-USER_DEFN[MAX_USER_DEFN], DEFN_STACK[MAX_DEFN_STACK];
+static jmp_buf
+BUITLIN_JBUF[NUM_BUILTINS];
 
 static 
 struct State
 {
-	uint8_t   name[NAMELEN_MAX];
-	uint8_t   argv[ARGVLEN_MAX][ARGV_MAX];
-	size_t    argc, argvlen[ARGV_MAX];
+	uint8_t   name[MAX_NAME];
+	uint8_t   argv[MAX_ARGV_NUM][MAX_ARGV_LEN];
+	size_t    argc, argvlen[MAX_ARGV_NUM];
 	char 	  outfile[FILENAME_MAX], infile[FILENAME_MAX];
+	bool      printerr;
 }  
 STATE;
 
 static
 jmp_buf	jbacktrack, jbuf, jif, ERROR_JMP[NUM_ERROR];
 
+
 static
-struct ohash *SYMTABLE;
-Stack_T defstack;
+struct MacroPool
+{
+	size_t size;
+	umacro_t  *macros;
+}
+POOL;
+
+static
+gl_map_t *SYMTABLE;
+
+static
+stack_type *DEFSTACK;
 
 static 
 FILE  *finp, *foutp, *fpri, *foutphold,  		\
@@ -461,12 +468,41 @@ static void
 m4_traceon(void)
 {
 	SET_JMP(ID_TRACEON);
-
-	if (TRACER.ison)
 		REJECT(ERRID_TRACEON, TRACER_ALREADY_ON);
 
-	TRACER.procid = fork();
-	
+	// todo	
+}
+
+static void
+m4_traceoff(void)
+{
+	SET_JMP(ID_TRACEOFF);
+
+	// todo
+
+}
+
+
+static void
+m4_errprint(void)
+{
+	SET_JMP(ID_ERRPRINT);
+
+	if (STATE.argc < ERRPRINT_LEAST_ARGC)
+		REJECT(ERRID_ERRPRINT, NO_ARGC);
+
+	uint8_t *errmsg = STATE.argv[1];
+
+	if (STATE.printerr) {
+		puts(tparm(tigetstr("setaf"), COLOR_RED), 1, putchar);
+		fputs(fpri, "Error: ");
+		tputs(tparm(tigetstr("sgr0")), 1, putchar);
+	}
+	fputs(fpri, errmsg);
+	fputs(PLAT_ENDLINE);
+
+	BACKTRACK(ERRPRINT_DONE);
+
 }
 
 static void
@@ -480,6 +516,66 @@ m4_define(void)
 	uint8_t *name = STATE.argv[1];
 	uint8_t *defn = STATE.argv[2];
 
-	ohash_insert(SYMTABLE, );
+	check_pool_capacity();
+	umacro_t *new_def = define_pool(name, defn);
 
+	if (!gl_hash_nx_getput(SYMTABLE, (void*)name, (void*)new_def))
+		REJECT(ERRID_DEFINE, HASHMAP_ERR);
+
+	BACKTRACK(DEFINE_DONE);
 }
+
+static void
+m4_undefine(void)
+{
+	SET_JMP(ID_UNDEFINE);
+
+	if (STATE.argc < UNDEFINE_LEAST_ARGC)
+		REJECT(ERRID_UNDEFINE, NO_ARGC);
+
+	uint8_t *name = STATE.argv[1];
+
+	gl_hash_nx_getremove(SYMTABLE, name, NULL);
+
+	BACKTRACK(UNDEFINE_DONE);
+}
+
+static void
+m4_defn(void)
+{
+	SET_JMP(ID_DEFN);
+
+	if (STATE.argc < DEFN_LEAST_ARGC)
+		REJECT(ERRID_DEFN, NO_ARGC);
+
+	uint8_t *name = STATE.argv[1];
+	uint8_t *defn = STATE.argv[2];
+
+	uint8_t qdefn[strlen(defn) + strlen(&lquote[0]) + strlen(&rquote[0])];
+
+	memmove(&qdefn[0], &lquote[0], strlen(&lquote[0]));
+	memmove(&qdefn[0], &defn[0], strlen(&defn[0]));
+	memmove(&qdefn[0], &rquote[0], strlen(&rquote[0]));
+
+	call_builtin(ID_DEFINE, 2, qdefn, name);
+}
+
+static void
+call_builtin(int id, size_t nargs, ...)
+{
+	va_list argls;
+	va_start(argls, nargs);
+	
+	STATE.builtin_id = id;
+
+	while (--nargs)
+	{
+		uint8_t *arg = va_arg(ap, uint8_t*);
+		memmove(&STATE.argv[nargs], arg);
+		memmove(&STATE.argvlen[nargs], strlen(arg));
+	}
+
+	call_state();
+}
+
+
