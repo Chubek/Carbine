@@ -72,8 +72,10 @@ static struct RuntimeState
 		FILE *STREAMS[NUM_DIVERT];
 		size_t LENGTHS[NUM_DIVERTS];
 		uint8_t *BUFFERS[NUM_DIVERTS];
+		FILE *null_diversion;
 	}
 	DIVERSIONS;
+	
 	static struct Wrap
 	{
 		FILE *stream;
@@ -84,15 +86,24 @@ static struct RuntimeState
 }
 STATE;
 
+#define CURR_ARGC	STATE.INVOKATION.argc
+#define ARGV_name 	&STATE.INVOKATION.ARGV[0][0]
+#define ARGV_nth(N)	&STATE.INVOKATION.ARGV[N][0]
+#define ARGV_star	&STATE.INVOKATION.argv_comma_joined[0]
+#define ARGV_atsign	&STATE.INVOKATION.argv_space_joined[0]
+
+#define INSTREAM	STATE.IO.instream
+#define OUTSTREAM	STATE.IO.outstream
+#define PRISTREAM	STATE.IO.errstream
 
 static void
 m4_incr(void)
 {
 	SET_JMP(ID_INCR);
 
-	uint8_t *num = &STATE.argv[1];
+	uint8_t *num = ARGV_nth(1);
 	int64_t inum = strtoll(num, NULL, 10);
-	outputfmt(foutp, "%ld\n", ++inum);
+	OutpuFMT(OUTSTREAM, "%ld\n", ++inum);
 
 	BACKTRACK(INCR_DONE);
 }
@@ -102,9 +113,9 @@ m4_decr(void)
 {
  	SET_JMP(ID_DECR);
 
-	uint8_t *num = &STATE.argv[1];
+	uint8_t *num = ARGV_nth(1);
 	int64_t inum = strtoll(num, NULL, 10);
-	outputfmt(foutp, "%ld\n", --inum);
+	OutpuFMT(OUTSTREAM, "%ld\n", --inum);
 
 	BACKTRACK(DECR_DONE);
 }
@@ -115,7 +126,7 @@ m4_m4wrap(void)
 {	
 	SET_JMP(ID_M4WRAP);
 	
-	uint8_t wraptext = &STATE.argv[1];
+	uint8_t wraptext = ARGV_nth(1);
 	fputs(wraptext, wrapspace);
 
 	BACKTRACK(M4WRAP_DONE);
@@ -127,7 +138,7 @@ m4_divert(void)
 {
 	SET_JMP(ID_DIVERT);
 	
-	char *nbuf = &STATE.argv[1];
+	char *nbuf = ARGV_nth(1);
 	
 	if (!(*nbuf))
 		REJECT(ERRID_DIVERT, NO_NBUF);
@@ -138,12 +149,12 @@ m4_divert(void)
 		REJECT(ERRID_DIVERT, DIVERT_INSUFF);
 	else if (yynbuf < 0) 
 	{
-		foutphold = foutp; foutp = nulldivert;
+		OUTSTREAMhold = OUTSTREAM; OUTSTREAM = nulldivert;
 	}
 	else
 	{
-		foutphold = foutp; foutp = DIVERTS[yynbuf]; 
-		divnum = fileno(foutp);
+		OUTSTREAMhold = OUTSTREAM; OUTSTREAM = DIVERTS[yynbuf]; 
+		divnum = fileno(OUTSTREAM);
 	}
 	
 	BACKTRACK(DIVERT_DONE);
@@ -155,17 +166,17 @@ m4_undivert(void)
 {
 	SET_JMP(ID_UNDIVERT);
 	
-	char *nbuf = &STATE.argv[1];
+	char *nbuf = ARGV_nth(1);
 	
 	if (!(*nbuf))
 		longjmp(ERR_JMP[ERRID_UNDIVERT], NO_NBUF);
 
 	int8_t yynbuf = atoi(nbuf);
 	
-       	foutp = foutphold; divnum = fileno(foutp);
+       	OUTSTREAM = OUTSTREAMhold; divnum = fileno(OUTSTREAM);
 	if (yynbuf < 0) return;
 
-	fputs(DIVERT_STRS[yynbuf], foutp);
+	fputs(DIVERT_STRS[yynbuf], OUTSTREAM);
 	ftruncte(fileno(DIVERTS[yynbuf]), 0);
 
 	BACKTRACK(UNDIVERT_DONE);
@@ -177,7 +188,7 @@ m4_divnum(void)
 {
 	SET_JMP(ID_DIVNUM);
 
-	outputfmt(foutp, "%ld", divnum);
+	OutpuFMT(OUTSTREAM, "%ld", divnum);
 
 	BACKTRACK(DIVNUM_DONE);
 }
@@ -188,7 +199,7 @@ m4_dnl(void)
 {
 	SET_JMP(ID_DNL);
 
-	while (fgetc(finp) != '\n'); fgetc(finp);
+	InputFMT(INSTREAM, "%*s\n", NULL);
 
 	BACKTRACK(DNL_DONE);
 }
@@ -201,9 +212,9 @@ m4_eval(void)
 {	
 	SET_JMP(ID_EVAL);
 	
-	yyfinal = 0; eval_yy_init(&STATE.argv[1]); eval_yy_parse();
+	yyfinal = 0; eval_yy_init(ARGV_nth(1)); eval_yy_parse();
 	
-	printf(foutp, "%ld\n", yyfinal);
+	OutpuFMT(OUTSTREAM, "%ld", yyfinal);
 
 	BACKTRACK(EVAL_DONE);
 
@@ -217,9 +228,9 @@ m4_ifdef(void)
 {
 	SET_JMP(ID_IFDEF);
 
-	focalsym = &STATE.argv[1]; 
-	ifdef = &STATE.argv[2]; 
-	ifndef = &STATE.argv[3];
+	focalsym = ARGV_nth(1); 
+	ifdef = ARGV_nth(2); 
+	ifndef = ARGV_nth(3);
 	
 	if (!(*focalsym))
 		REJECT(ERRID_IFDEF, NO_IFSYM);
@@ -277,10 +288,10 @@ m4_index(void)
 	if (STATE.argc < )
 		REJECT(ERRID_INDEX, NO_CHAR);
 
-	uint8_t *haystack = &STATE.argv[1], *needle = &STATE.argv[2];
+	uint8_t *haystack = ARGV_nth(1), *needle = ARGV_nth(2);
 	size_t idx = strspn(haystack, needle);
 	
-	outputfmt(foutp, "%lu", idx);
+	OutpuFMT(OUTSTREAM, "%lu", idx);
 
 	BACKTRACK(INDEX_DONE);
 }
@@ -293,10 +304,10 @@ m4_len(void)
 	if (STATE.argc < LEN_LEAST_ARGC)
 		REJECT(ERRID_LEN, NO_STR);
 
-	uint8_t *subject = &STATE.argv[1];
+	uint8_t *subject = ARGV_nth(1);
 	size_t lensubj = strlen(subject);
 
-	outputfmt(foutp, "%lu", lensubj);
+	OutpuFMT(OUTSTREAM, "%lu", lensubj);
 	
 	BACKTRACK(LEN_DONE);
 }
@@ -311,7 +322,7 @@ m4_mkstemp(void)
 	if (STATE.argc < MKSTEMP_LEAST_ARGC)
 		temp = DEFAULT_TMP_TEMP;
 	else
-		temp = &STATE.argv[1];
+		temp = ARGV_nth(1);
 	if ((fdesc = mkstemp(temp)) < 0)
 		REJECT(ERRID_MKSTEMP, errno);
 	else
@@ -330,7 +341,7 @@ m4_shift(void)
 
 	size_t shfnum = 2;	
 	while (shfnum < STATE.argc)
-		fputs(&STATE.argv[shfnum++], foutp);
+		fputs(&STATE.argv[shfnum++], OUTSTREAM);
 	
 	BACKTRACK(SHIFT_DONE);
 }
@@ -343,13 +354,13 @@ m4_sinclude(void)
 	if (STATE.argc < SINCL_LEAST_ARGC)
 		REJECT(ERRID_SINCLUDE, NO_ARGC);
 			
-	char *file = &STATE.argv[1];
+	char *file = ARGV_nth(1);
 	currincl = fopen(file, "r"); !currincl 
 						? BACKTRACK(SINCL_SILENT_FAIL)
 						: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
-		outputfmt(foutp, "%s\n",  currline);
+		OutpuFMT(OUTSTREAM, "%s\n",  currline);
 	}
 	fclose(currincl); currincl = NULL;
 
@@ -364,13 +375,13 @@ m4_include(void)
 	if (STATE.argc < SINCL_LEAST_ARGC)
 		REJECT(ERRID_INCLUDE, NO_ARGC);
 			
-	char *file = &STATE.argv[1];
+	char *file = ARGV_nth(1);
 	currincl = fopen(file, "r"); !currincl 
 					? REJECT(ERRID_IO, errno)
 					: None;
 	while ((getline(&currline, &currlinelen, currincl)) > 0)
 	{
-		outputfmt(foutp, "%s\n", currline);
+		OutpuFMT(OUTSTREAM, "%s\n", currline);
 	}
 	fclose(currincl); currincl = NULL;
 
@@ -385,12 +396,12 @@ m4_substr(void)
 	if (STATE.argc < SUBSTR_LEAST_ARGC)
 		REJECT(ERRID_SUBSTR, NO_ARGC);
 
-	uint8_t *string = STATE.argv[1];
-	ssize_t offset = atol(STATE.argv[2]), numchr = STATE.argc == 3
+	uint8_t *string = ARGV_nth(1);
+	ssize_t offset = atol(ARGV_nth(2)), numchr = STATE.argc == 3
 							? atol(STATE.argv[3])
 							: strlen(string);
 	string = &string[offset]; string[numchr - 1] = '\0';
-	outputfmt(foutp, string);
+	OutpuFMT(OUTSTREAM, string);
 
 	BACKTRACK(SUBSTR_DONE);
 }
@@ -403,7 +414,7 @@ m4_syscmd(void)
 	if (STATE.argc < SYSCMD_LEAST_ARGC)
 		REJECT(ERRID_SYSCMD, NO_ARGC);
 
-	uint8_t *cmd = STATE.argv[1]; shexcode = system(cmd);
+	uint8_t *cmd = ARGV_nth(1); shexcode = system(cmd);
 
 	BACKTRACK(SYSCMD_DONE);
 }
@@ -413,7 +424,7 @@ m4_sysval(void)
 {
 	SET_JMP(ID_SYSVAL);
 
-	outputfmt(foutp, "%ld", shexcode);
+	OutpuFMT(OUTSTREAM, "%ld", shexcode);
 
 	BACKTRACK(SYSVAL_DONE);
 }
@@ -427,8 +438,8 @@ m4_translit(void)
 	if (STATE.argc < TRANSLIT_LEAST_ARGC)
 		REJECT(ERRID_TRANSLIT, NO_ARGC);
 
-	uint8_t *corp = STATE.argv[1],	\
-		*this = STATE.argv[2],	\
+	uint8_t *corp = ARGV_nth(1),	\
+		*this = ARGV_nth(2),	\
 		*with = STATE.argv[3], *rem, lchr;
 	size_t  lencorp = STATE.argvlen[1],	\
 		lenthis = STATE.argvlen[2],	\
@@ -449,8 +460,8 @@ m4_translit(void)
 		TRANTBL[lchr] = *with++;
 	for (int i = 0; i < lencorp; i++)
 		corp[i] = TRANTBL[corp[i]];
-	if (rem) fputs(rem, foutp);
-	outputfmt(foutp, "%s", corp);
+	if (rem) fputs(rem, OUTSTREAM);
+	OutpuFMT(OUTSTREAM, "%s", corp);
 	
 	BACKTRACK(TRANSLIT_DONE);
 }
@@ -464,8 +475,8 @@ m4_errprint(void)
 	if (STATE.argc < ERRPRINT_LEAST_ARGC)
 		REJECT(ERRID_ERRPRINT, NO_ARGC);
 
-	uint8_t *errmsg = STATE.argv[1];
-	outputfmt(fpri,"%s", errmsg);
+	uint8_t *errmsg = ARGV_nth(1);
+	OutpuFMT(fpri,"%s", errmsg);
 
 	BACKTRACK(ERRPRINT_DONE);
 }
@@ -478,8 +489,8 @@ m4_define(void)
 	if (STATE.argc < DEFINE_LEAST_ARGC)
 		REJECT(ERRID_DEFINE, NO_ARGC);
 
-	uint8_t *name = STATE.argv[1];
-	uint8_t *defn = STATE.argv[2];
+	uint8_t *name = ARGV_nth(1);
+	uint8_t *defn = ARGV_nth(2);
 
 	check_pool_capacity();
 	umacro_t *new_def = define_pool(name, defn);
@@ -498,7 +509,7 @@ m4_undefine(void)
 	if (STATE.argc < UNDEFINE_LEAST_ARGC)
 		REJECT(ERRID_UNDEFINE, NO_ARGC);
 
-	uint8_t *name = STATE.argv[1];
+	uint8_t *name = ARGV_nth(1);
 
 	gl_hash_nx_getremove(SYMTABLE, name, NULL);
 
@@ -513,8 +524,8 @@ m4_defn(void)
 	if (STATE.argc < DEFN_LEAST_ARGC)
 		REJECT(ERRID_DEFN, NO_ARGC);
 
-	uint8_t *name = STATE.argv[1];
-	uint8_t *defn = STATE.argv[2];
+	uint8_t *name = ARGV_nth(1);
+	uint8_t *defn = ARGV_nth(2);
 
 	uint8_t qdefn[strlen(defn) + strlen(&lquote[0]) + strlen(&rquote[0])];
 
@@ -533,8 +544,8 @@ m4_pushdef(void)
 	if (STATE.argc < PUSHDEF_LEAST_ARGC)
 		REJECT(ERRID_PUSHDEF, NO_ARGC);
 
-	uint8_t *name = STATE.argv[1];
-	uint8_t *defn = STATE.argv[2];
+	uint8_t *name = ARGV_nth(1);
+	uint8_t *defn = ARGV_nth(2);
 
 	check_pool_capacity();
 	umacro_t *newdef = define_pool(name, defn);
@@ -644,8 +655,8 @@ trace_calls(void)
 	if (!STATE.traceon) return;
 
 	fputs(fpri, M4_TRACE_QUIP);
-	outputfmt(fpri, " -%lu- ", STATE.argc);
-	outputfmt(fpri, "%s -> %s%s%s\n", 
+	OutpuFMT(fpri, " -%lu- ", STATE.argc);
+	OutpuFMT(fpri, "%s -> %s%s%s\n", 
 			&STATE.argv[0],
 			&STATE.lquote[0],
 			&STATE.lastexpand[0],
@@ -653,3 +664,4 @@ trace_calls(void)
 		);
 	
 }
+
