@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <stdbool.h>
+#includei <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
 #include <limits.h>
@@ -15,87 +15,75 @@
 
 
 #include "_eval.yy.c"
-#include "gl_hash_map.h"
-#include "trie.h"
+#include "m4-carbine.h"
 
-typedef struct UserMacro {
-	uint8_t name[MAX_NAME], uint8_t defn[MAX_DEFN];
-	size_t poolidx;
-} umacro_t;
-
-#define GL_STACK_ELEMENT umacro_t*
-
-#include "stack.h"
-
-#ifndef DEV_NULL
-#define DEV_NULL "/dev/null"
-#endif
-
-
-static 
-struct State
+static struct RuntimeState
 {
-	int	  builtin_id;
-	uint8_t   argv[MAX_ARGV_NUM][MAX_ARGV_LEN];
-	size_t    argc, argvlen[MAX_ARGV_NUM];
-	char 	  outfile[FILENAME_MAX], infile[FILENAME_MAX];
-	bool      printerr, traceon;
-}  
+	static struct Flags
+	{
+		bool force_traceon;
+		bool force_prefix;
+		bool run_interactive;
+		bool line_directive;
+	}
+	FLAGS;
+	
+	
+	static struct IO
+	{
+		FILE *instream;
+		FILE *outstream;
+		FILE *errstream;
+	}
+	IO;
+
+	static struct Tracer
+	{
+		bool trace_on;
+		uint8_t LAST_TRACE[MAX_TRACE_LEN];
+	}
+	TRACER;
+
+	static struct Symbols
+	{
+		SymbolTable *symtable;
+		SymbolStack *symstack;
+	}
+	SYMBOLS;
+
+	static struct Invokation
+	{
+		size_t argc;
+		size_t ARGVLENS[MAX_ARGV_NUM];
+		uint8_t ARGV[MAX_ARGV_NUM][MAX_ARGV_LEN];
+		uint8_t *argv_space_joined;
+		uint8_t *argv_comma_joined;
+	}
+	INVOKATION;
+	
+	static struct JmpBufs
+	{
+		jmp_buf BUILTIN[NUM_BUILTINS];
+		jmp_buf ERRORS[NUM_ERRORS];
+	} 
+	NONLOC_JMPBUFS;
+	static struct Diversions
+	{
+		FILE *STREAMS[NUM_DIVERT];
+		size_t LENGTHS[NUM_DIVERTS];
+		uint8_t *BUFFERS[NUM_DIVERTS];
+	}
+	DIVERSIONS;
+	static struct Wrap
+	{
+		FILE *stream;
+		size_t length;
+		uint8_t *buffer;
+	}
+	WRAP;
+}
 STATE;
 
-static
-jmp_buf	jbacktrack, jbuf, jif, 				\
-	ERROR_JBUF[NUM_ERROR], 				\
-	BUILTIN_JBUF[NUM_BUILTIN];
-
-
-static
-struct MacroPool
-{
-	size_t allocnum;
-	umacro_t  **macros;
-}
-POOL;
-
-static
-gl_map_t *SYMTABLE;
-
-static
-stack_type *DEFSTACK;
-
-static 
-FILE  *finp, *foutp, *fpri, *foutphold,  		\
-      *currincl, *nulldivert, *wrapspace,			\
-      *DIVERTS[DIVERT_NUM], *currdivert;
-
-static 
-uint8_t lquote[SYNT_NUM], rquote[SYNT_NUM], comment[SYNT_NUM], \
-	*wrapstr, DIVERT_STRS[DIVERT_NUM]	       \
-	*focalsym, *ifdef, *ifndef, *currline;
-
-static
-struct IfEqElse
-{
-	uint8_t *lhs, *rhs, *ifeq, *ifne;
-}
-IFEQ_STACK[IFEQ_MAX];
-
-static 
-int64_t shexcode, divnum, defntop, stacktop;
-
-static 
-size_t ifeqtop, currlinelen, DIVERT_LENS[DIVERT_NUM];
-
-
-#define None
-#define Some(V) V & 1
-
-#define SET_JMP(ID) int jres = setjmp(BUILTINS[ID].jbuf); 	\
-			!jres ? longjmp(BUILTINS[ID].jdfl, ID) : jres;
-
-#define BACKTRACK(MSG) longjmp(jbacktrack, MSG)
-
-#define ENTRY_FIND(ENT) hsearch((ENTRY){ .key = ENT }, FIND)
 
 static void
 m4_incr(void)
