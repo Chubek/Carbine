@@ -63,6 +63,8 @@ static struct RuntimeState
 		FILE *current_include_file;
 		uint8_t *current_include_line;
 		size_t current_include_linelen;
+		int shell_exit_code;
+		uint32_t *translit_map;
 	}
 	INVOKATION;
 	
@@ -383,13 +385,22 @@ m4_sinclude(void)
 	SET_JMP(ID_SINCLUDE);
 
 	uint8_t *include_file_path = ARGV_nth(1);
-	FILE *include_file_stream = fopen(include_file_path, "r");
+	current_include_file = fopen(include_file_path, "r");
 	
-	if (!include_file_stream)
+	if (!current_include_file)
 		// todo jump back
 	
-
-	while ()
+	ssize_t read_result;
+	while ((read_result = getline(
+			INCLINE_STR, 
+			INCLINE_LEN, 
+			current_include_file
+		)) > 0) {   OUTPUT_FMT(
+				OUTSTREAM, 
+				"%^%n", 
+				INCLINE_STR,
+				INCLINE_LEN,
+			);}
 
 	BACKTRACK(SINCLUDE_DONE);
 }
@@ -399,18 +410,24 @@ m4_include(void)
 {
 	SET_JMP(ID_INCLUDE);
 
-	if (STATE.argc < SINCL_LEAST_ARGC)
-		REJECT(ERRID_INCLUDE, NO_ARGC);
-			
-	char *file = ARGV_nth(1);
-	currincl = fopen(file, "r"); !currincl 
-					? REJECT(ERRID_IO, errno)
-					: None;
-	while ((getline(&currline, &currlinelen, currincl)) > 0)
-	{
-		fprintf(OUTSTREAM, "%s\n", currline);
-	}
-	fclose(currincl); currincl = NULL;
+	uint8_t *include_file_path = ARGV_nth(1);
+	current_include_file = fopen(include_file_path, "r");
+	
+	if (!current_include_file)
+		// todo error
+	
+	ssize_t read_result;
+	while ((read_result = getline(
+			INCLINE_STR, 
+			INCLINE_LEN, 
+			current_include_file
+		)) > 0) {   OUTPUT_FMT(
+				OUTSTREAM, 
+				"%^%n", 
+				INCLINE_STR,
+				INCLINE_LEN,
+			);}
+
 
 	BACKTRACK(INCLUDE_DONE);
 }
@@ -420,15 +437,19 @@ m4_substr(void)
 {
 	SET_JMP(ID_SUBSTR);
 
-	if (STATE.argc < SUBSTR_LEAST_ARGC)
-		REJECT(ERRID_SUBSTR, NO_ARGC);
-
 	uint8_t *string = ARGV_nth(1);
-	ssize_t offset = atol(ARGV_nth(2)), numchr = STATE.argc == 3
-							? atol(STATE.argv[3])
-							: strlen(string);
-	string = &string[offset]; string[numchr - 1] = '\0';
-	fprintf(OUTSTREAM, string);
+	ssize_t sub_offset = strtoll(ARGV_nth(2), NULL, BASE_DECIMAL); 
+	ssize_t sub_extent = STATE.argc == 3
+			? strtoll(ARGV_nth(3), NULL, BASE_DECIMAL)
+			: u8_strlen(string);
+
+	OUTPUT_FMT(
+			OUTSTREAM, 
+			"%&%s%n%n", 
+			sub_offset, 
+			sub_extent, 
+			string
+		);
 
 	BACKTRACK(SUBSTR_DONE);
 }
@@ -438,10 +459,8 @@ m4_syscmd(void)
 {
 	SET_JMP(ID_SYSCMD);
 
-	if (STATE.argc < SYSCMD_LEAST_ARGC)
-		REJECT(ERRID_SYSCMD, NO_ARGC);
-
-	uint8_t *cmd = ARGV_nth(1); shexcode = system(cmd);
+	uint8_t *shell_cmd = ARGV_nth(1); 
+	SHELLEXCODE = system(shell_cmd);
 
 	BACKTRACK(SYSCMD_DONE);
 }
@@ -451,7 +470,7 @@ m4_sysval(void)
 {
 	SET_JMP(ID_SYSVAL);
 
-	fprintf(OUTSTREAM, "%ld", shexcode);
+	OUTPUT_FMT(OUTSTREAM, "%i", SHELLEXCODE);
 
 	BACKTRACK(SYSVAL_DONE);
 }
@@ -461,35 +480,26 @@ static void
 m4_translit(void)
 {
 	SET_JMP(ID_TRANSLIT);
-
-	if (STATE.argc < TRANSLIT_LEAST_ARGC)
-		REJECT(ERRID_TRANSLIT, NO_ARGC);
-
-	uint8_t *corp = ARGV_nth(1),	\
-		*this = ARGV_nth(2),	\
-		*with = STATE.argv[3], *rem, lchr;
-	size_t  lencorp = STATE.argvlen[1],	\
-		lenthis = STATE.argvlen[2],	\
-	      	lenwith = STATE.argvlen[3];
-
-	lenwith < lencorp
-		? (corp[lenwith - 1] = '\0', lencorp = lenwith)
-		: (lenthis < lencorp
-			? (rem = strndupa(corp, lencorp), 
-				rem[lenthis - 1] = '\0',
-				corp = &corp[lenthis - 1], 
-				lencorp = lenthis)
-			: (with[lencorp - 1] = '\0', this[lencorp - 1] = '\0'),
-		  );
-
-	uint8_t TRANTBL[UINT8_MAX];
-	while ((lchr = *this++)) 
-		TRANTBL[lchr] = *with++;
-	for (int i = 0; i < lencorp; i++)
-		corp[i] = TRANTBL[corp[i]];
-	if (rem) fputs(rem, OUTSTREAM);
-	fprintf(OUTSTREAM, "%s", corp);
 	
+	uint32_t *text_biguni = u8_to_u32(ARGV_nth(1));
+	uint32_t *map_key = u8_to_u32(ARGV_nth(2));
+	uint32_t *map_val = u8_to_u32(ARGV_nth(3));
+	size_t text_len = ARGVLEN_nth(1);
+	size_t key_len = ARGVLEN_nth(2);
+	size_t val_len = ARGVLEN_nth(3);
+	size_t index = MINIMUM(key_len, val_len);
+	
+	map_key[index - 1] =
+		map_val[index - 1] = U'\0';
+	
+	memset(TRANSLIT_MAP, 0, sizeof(uint32_t) * MAX_TRANSLIT_SIZE);
+
+	while (--index)
+		TRANSLIT_MAP[IDX_KEY] = IDX_VAL;
+
+	while (--text_len)
+		IDX_TXT = TRANSLIT_MAP[IDX_TXT];
+		
 	BACKTRACK(TRANSLIT_DONE);
 }
 
