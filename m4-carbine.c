@@ -60,6 +60,9 @@ static struct RuntimeState
 		uint8_t ARGV[MAX_ARGV_NUM][MAX_ARGV_LEN];
 		uint8_t *argv_space_joined;
 		uint8_t *argv_comma_joined;
+		FILE *current_include_file;
+		uint8_t *current_include_line;
+		size_t current_include_linelen;
 	}
 	INVOKATION;
 	
@@ -165,7 +168,7 @@ m4_divert(void)
 	SET_JMP(ID_DIVERT);
 	
 	char *buff_num = ARGV_nth(1);
-	DIVERTNUM = atoi(buff_num);
+	DIVERTNUM = strtoll(buff_num, NULL, BASE_DECIMAL);
 	
 	if (DIVERTNUM > DIVERT_NUM) 
 		// todo errror
@@ -189,7 +192,7 @@ m4_undivert(void)
 	SET_JMP(ID_UNDIVERT);
 	
 	char *buff_num = ARGV_nth(1);
-	UNDIVERTNUM = atoi(buff_num);
+	UNDIVERTNUM = strtoll(buff_num, NULL, BASE_DECIMAL);
 	
 	if (UNDIVERTNUM < 0)
 		// todo error
@@ -221,7 +224,7 @@ m4_dnl(void)
 {
 	SET_JMP(ID_DNL);
 
-	INPUT_FMT(INSTREAM, "%*s\n", NULL);
+	fscanf(INSTREAM, "%*s\n", NULL);
 
 	BACKTRACK(DNL_DONE);
 }
@@ -336,11 +339,9 @@ m4_len(void)
 {
 	SET_JMP(ID_LEN);
 
-
 	uint8_t *subject = ARGV_nth(1);
-	size_t lensubj = strlen(subject);
-
-	fprintf(OUTSTREAM, "%i", lensubj);
+	size_t subject_len = u8_strlen(subject);
+	OUTPUT_FMT(OUTSTREAM, "%i", subject_len);
 	
 	BACKTRACK(LEN_DONE);
 }
@@ -350,8 +351,14 @@ m4_mkstemp(void)
 {
 	SET_JMP(ID_MKSTEMP);
 
-	char *temp;
+	char *template = ARGV_nth(1);
 	int fdesc;
+	
+	if ((fdesc = mkstemp(template)) < 0)
+		// todo error
+	close(fdesc);
+	OUTPUT_FMT(OUTSTREAM, "%s", template);
+
 	BACKTRACK(MKSTEMP_DONE);
 }
 
@@ -359,13 +366,13 @@ static void
 m4_shift(void)
 {
 	SET_JMP(ID_SHIFT);
-
-	if (STATE.argc < SHIFT_LEAST_ARGC)
-		REJECT(ERRID_SHIFT, NO_ARGC);
-
-	size_t shfnum = 2;	
-	while (shfnum < STATE.argc)
-		fputs(&STATE.argv[shfnum++], OUTSTREAM);
+	
+	uint8_t *current_argv;
+	size_t shift_index = SHIFT_INDEX_INIT;
+	while (++shift_index < ARGC) {
+		current_argv = ARGV_nth(shift_index);
+		OUTPUT_FMT(OUTSTREAM, "%s,", current_argv);
+	}
 	
 	BACKTRACK(SHIFT_DONE);
 }
@@ -375,18 +382,14 @@ m4_sinclude(void)
 {
 	SET_JMP(ID_SINCLUDE);
 
-	if (STATE.argc < SINCL_LEAST_ARGC)
-		REJECT(ERRID_SINCLUDE, NO_ARGC);
-			
-	char *file = ARGV_nth(1);
-	currincl = fopen(file, "r"); !currincl 
-						? BACKTRACK(SINCL_SILENT_FAIL)
-						: None;
-	while ((getline(&currline, &currlinelen, currincl)) > 0)
-	{
-		fprintf(OUTSTREAM, "%s\n",  currline);
-	}
-	fclose(currincl); currincl = NULL;
+	uint8_t *include_file_path = ARGV_nth(1);
+	FILE *include_file_stream = fopen(include_file_path, "r");
+	
+	if (!include_file_stream)
+		// todo jump back
+	
+
+	while ()
 
 	BACKTRACK(SINCLUDE_DONE);
 }
