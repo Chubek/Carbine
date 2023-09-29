@@ -50,12 +50,15 @@ static struct RuntimeState
 		size_t quoted_buffer_len;
 		int shell_exit_code;
 		uint32_t *translit_map;
+		regex_t *compiled_re;
+		pcre *compiled_pcre;
 	}
 	INVOKATION;
 	
 	static struct JmpBufs
 	{
-		jmp_buf BUILTIN[NUM_BUILTINS];
+		jmp_buf BUILTIN_POSIX[NUM_POSIX_BUILTINS];
+		jmp_buf BUILTIN_NONSTD[NUM_NONSTD_BUILTINS];
 		jmp_buf ERRORS[NUM_ERRORS];
 	} 
 	NONLOC_JMPBUFS;
