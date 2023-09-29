@@ -52,6 +52,9 @@ static struct RuntimeState
 		uint32_t *translit_map;
 		regex_t *compiled_re;
 		pcre *compiled_pcre;
+		regmatch_t pmatch[MAX_PMATCH];
+		regoff_t start_offset;
+		regoff_t end_offset;
 	}
 	INVOKATION;
 	
