@@ -105,9 +105,11 @@ STATE;
 
 #define CURR_ARGC	STATE.INVOKATION.argc
 #define ARGV_name 	&STATE.INVOKATION.ARGV[0][0]
-#define ARGV_nth(N)	&STATE.INVOKATION.ARGV[N][0]
+#define ARGV_nth(n)	&STATE.INVOKATION.ARGV[n][0]
 #define ARGV_star	&STATE.INVOKATION.argv_comma_joined[0]
 #define ARGV_atsign	&STATE.INVOKATION.argv_space_joined[0]
+#define ARGVLEN_name	STATE.INVOKATION.ARGVLEN[0]
+#define ARGVLEN_nth(n)  sTATE.INVOKATIOn.ARGVLEN[n]	
 
 #define INSTREAM	STATE.IO.instream
 #define OUTSTREAM	STATE.IO.outstream
@@ -254,10 +256,12 @@ m4_ifdef(void)
 	uint8_t *focal_symbol = ARGV_nth(1); 
 	uint8_t *ifdef = ARGV_nth(2); 
 	uint8_t *ifndef = ARGV_nth(3);
+	size_t ifdef_len = ARGVLEN_nth(2);
+	size_t ifndef_len = ARGVLEN_nth(3);
 
 	SYMBOL_EXISTS(focal_symbol) 
-		? OUTPUT_FMT(OUTSTREAM, ATTEMPT_EVAL, ifdef)
-		: OUTPUT_FMT(OUTSTREAM, ATTEMPT_EVAL, ifndef);
+		? OUTPUT_FMT(OUTSTREAM, "%e%n%q", ifdef_len, ifdef)
+		: OUTPUT_FMT(OUTSTREAM, "%e%n%q", ifndef_len, ifndef);
 
 	BACKTRACK(IFDEF_DONE);
 }
@@ -267,36 +271,49 @@ m4_ifelse(void)
 {
 	SET_JMP(ID_IFELSE);
 
-	ifeqtop = 0;
-	int i, j, k, m;
+	if (ARGC == 3) 
+		goto case_three_args;
+	else if (ARGC == 4 || ARGC == 5)
+		goto case_four_or_five_args;
+	else if (ARGC == 6)
+		goto case_six_args;
+	else
+		// todo error
+case_three_args:
+	uint8_t *compare_a = ARGV_nth(1);
+	uint8_t *compare_b = ARGV_nth(2);
+	uint8_t *print_ifeq = ARGV_nth(3);
 
-	switch (STATE.argc)
-	{
-		case 0:
-		case 1:
-		case 2:
-			REJECT(ERRID_IFELSE, ARGC_INSUFF);
-			break;
-		default:
-fill:
-			i = --STATE.argc; j = --STATE.argc; 
-			k = --STATE.argc; m = --STATE.argc;
-			STATE.argc <= 0 
-				? goto done
-				: goto pushifeq;
-pushifeq:
-			IFEQ_STACK[ifeqtop].lhs = &STATE.argv[i];
-			IFEQ_STACK[ifeqtop].rhs = &STATE.argv[j];
-			IFEQ_STACK[ifeqtop].ifeq = &STATE.argv[k];
-			IFEQ_STACK[ifeqtop++].ifne = m <= 0
-				? NULL
-				: &STATE.argv[m];
-			goto fill;
+	!u8_strcmp(compare_a, compare_b)
+		? OUTPUT_FMT(OUTSTREAM, "%s", print_ifeq)
+		: OUTPUT_FMT(OUTSTREAM, NULL, NULL);
+       goto done;
+
+case_four_or_five_args:
+	uint8_t *compare_a = ARGV_nth(1);
+	uint8_t *compare_b = ARGV_nth(2);
+	uint8_t *print_ifeq = ARGV_nth(3);
+	uint8_t *print_ifne = ARGV_nth(4);
+
+	!u8_strcmp(compare_a, compare_b)
+		? OUTPUT_FMT(OUTSTREAM, "%s", print_ifeq)
+		: OUTPUT_FMT(OUTSTREAM, "%s", print_ifne);
+	goto done;
+
+case_six_args:
+	uint8_t *compare_a = ARGV_nth(4);
+	uint8_t *compare_b = ARGV_nth(5);
+	uint8_t *print_ifeq = ARGV_nth(6);
+
+	!u8_strcmp(compare_a, compare_b)
+		? OUTPUT_FMT(OUTSTREAM, "%s", print_ifeq)
+		: OUTPUT_FMT(OUTSTREAM, NULL, NULL);
+	goto done;
+
 done:
-			BACKTRACK(IFELSE_DONE);
-			break;
-	}
+	BACKTRACK(IFELSE_DONE);
 }
+
 
 
 static void
@@ -305,10 +322,11 @@ m4_index(void)
 	SET_JMP(ID_INDEX);
 
 
-	uint8_t *haystack = ARGV_nth(1), *needle = ARGV_nth(2);
-	size_t idx = strspn(haystack, needle);
+	uint8_t *haystack = ARGV_nth(1);
+	uint8_t	*needle = ARGV_nth(2);
+	size_t substr_index = u8_strspn(haystack, needle);
 	
-	fprintf(OUTSTREAM, "%lu", idx);
+	OUTPUT_FMT(OUTSTREAM, "%i", idx);
 
 	BACKTRACK(INDEX_DONE);
 }
@@ -322,7 +340,7 @@ m4_len(void)
 	uint8_t *subject = ARGV_nth(1);
 	size_t lensubj = strlen(subject);
 
-	fprintf(OUTSTREAM, "%lu", lensubj);
+	fprintf(OUTSTREAM, "%i", lensubj);
 	
 	BACKTRACK(LEN_DONE);
 }
@@ -661,7 +679,7 @@ trace_calls(void)
 	if (!STATE.traceon) return;
 
 	fputs(PRISTREAM, M4_TRACE_QUIP);
-	fprintf(PRISTREAM, " -%lu- ", STATE.argc);
+	fprintf(PRISTREAM, " -%i- ", STATE.argc);
 	fprintf(PRISTREAM, "%s -> %s%s%s\n", 
 			&STATE.argv[0],
 			&STATE.lquote[0],
