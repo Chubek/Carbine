@@ -48,8 +48,9 @@ static struct RuntimeState
 
 	static struct Container
 	{
-		gl_stack *SYMSTACK;
-		gl_hash_map *SYMTABLE;
+		gl_stack_t *SYMSTACK;
+		gl_hash_map_t *SYMTABLE;
+		gnuc_obstack_t *EVALPOOL;
 	}
 	CONTAINERS;
 
@@ -61,8 +62,11 @@ static struct RuntimeState
 		uint8_t *argv_space_joined;
 		uint8_t *argv_comma_joined;
 		FILE *current_include_file;
+		FIlE *quoted_stream;
+		uint8_t *quoted_buffer;
 		uint8_t *current_include_line;
 		size_t current_include_linelen;
+		size_t quoted_buffer_len;
 		int shell_exit_code;
 		uint32_t *translit_map;
 	}
@@ -115,6 +119,10 @@ STATE;
 #define ARGV_atsign	&STATE.INVOKATION.argv_space_joined[0]
 #define ARGVLEN_name	STATE.INVOKATION.ARGVLEN[0]
 #define ARGVLEN_nth(n)  sTATE.INVOKATIOn.ARGVLEN[n]	
+#define DEFN_stream	STATE.INVOKATION.quoted_stream
+#define DEFN_string	&STATE.INVOKATION.quoted_buffer[0]
+#define DEFN_strlen	STATE.INVOKATION.quoted_len
+
 
 #define INSTREAM	STATE.IO.instream
 #define OUTSTREAM	STATE.IO.outstream
@@ -508,12 +516,9 @@ static void
 m4_errprint(void)
 {
 	SET_JMP(ID_ERRPRINT);
-
-	if (STATE.argc < ERRPRINT_LEAST_ARGC)
-		REJECT(ERRID_ERRPRINT, NO_ARGC);
-
-	uint8_t *errmsg = ARGV_nth(1);
-	fprintf(PRISTREAM,"%s", errmsg);
+               
+	uint8_t *error_message = ARGV_nth(1);
+	OUTPUT_FMT(PRISTREAM,"%s", error_message);
 
 	BACKTRACK(ERRPRINT_DONE);
 }
@@ -523,17 +528,11 @@ m4_define(void)
 {
 	SET_JMP(ID_DEFINE);
 
-	if (STATE.argc < DEFINE_LEAST_ARGC)
-		REJECT(ERRID_DEFINE, NO_ARGC);
+	uint8_t *macro_name = ARGV_nth(1);
+	uint8_t *macro_definition = ARGV_nth(2);
 
-	uint8_t *name = ARGV_nth(1);
-	uint8_t *defn = ARGV_nth(2);
-
-	check_pool_capacity();
-	umacro_t *new_def = define_pool(name, defn);
-
-	if (!gl_hash_nx_getput(SYMTABLE, (void*)name, (void*)new_def))
-		error_out(ERRMSG_SYMTABLE_ERR);
+	if (!SYMTABLE_INSERT(macro_name, macro_definition))
+		// todo error
 
 	BACKTRACK(DEFINE_DONE);
 }
@@ -543,12 +542,10 @@ m4_undefine(void)
 {
 	SET_JMP(ID_UNDEFINE);
 
-	if (STATE.argc < UNDEFINE_LEAST_ARGC)
-		REJECT(ERRID_UNDEFINE, NO_ARGC);
+	uint8_t *macro_name = ARGV_nth(1);
 
-	uint8_t *name = ARGV_nth(1);
-
-	gl_hash_nx_getremove(SYMTABLE, name, NULL);
+	if (!SYMTABLE_DELETE(macro_name))
+		// todo error
 
 	BACKTRACK(UNDEFINE_DONE);
 }
@@ -558,19 +555,12 @@ m4_defn(void)
 {
 	SET_JMP(ID_DEFN);
 
-	if (STATE.argc < DEFN_LEAST_ARGC)
-		REJECT(ERRID_DEFN, NO_ARGC);
+	uint8_t *text = ARGV_nth(1);
+	truncate
+	DEFN_strlen = u8_strlen(text);
+	OUTPUT_FMT(DEFN_stream, "%s%s%s", LQUOTE, text, RQUOTE);
 
-	uint8_t *name = ARGV_nth(1);
-	uint8_t *defn = ARGV_nth(2);
-
-	uint8_t qdefn[strlen(defn) + strlen(&lquote[0]) + strlen(&rquote[0])];
-
-	memmove(&qdefn[0], &lquote[0], strlen(&lquote[0]));
-	memmove(&qdefn[0], &defn[0], strlen(&defn[0]));
-	memmove(&qdefn[0], &rquote[0], strlen(&rquote[0]));
-
-	call_builtin(ID_DEFINE, 2, BUILTIN_NAMES[ID_DEFINE], name, defn);
+	BACKTRACK(DEFN_DONE);
 }
 
 static void
@@ -581,13 +571,13 @@ m4_pushdef(void)
 	if (STATE.argc < PUSHDEF_LEAST_ARGC)
 		REJECT(ERRID_PUSHDEF, NO_ARGC);
 
-	uint8_t *name = ARGV_nth(1);
-	uint8_t *defn = ARGV_nth(2);
-
-	check_pool_capacity();
-	umacro_t *newdef = define_pool(name, defn);
-
-	stack_push(DEFSTACK, new_def);
+	uint8_t *macro_name = ARGV_nth(1);
+	uint8_t *macro_definition = ARGV_nth(2);
+	
+	if (!SYMTABLE_INSERT(macro_name, macro_definition))
+		// todo error
+	if (!SYMSTACK_PUSHDEF(macro_name))
+		// todo error
 
 	BACKTRACK(PUSHDEF_DONE);
 }
@@ -596,13 +586,13 @@ static void
 m4_popdef(void)
 {
 	SET_JMP(ID_POPDEF);
-
-	if (STATE.argc < POPDEF_LEAST_ARGC)
-		REJECT(ERRID_POPDEF, NO_ARGC);
-
-	umacro_t *lastdef = stack_pop(DEFSTACK);
-	undefine_pool(lastdef);
-
+	
+	uint8_t *defstack_top;
+        if (!(defstack_top = SYMSTACK_POP()))
+		//todo error
+	if (!SYMTABLE_DELETE(defstack_top))
+		//todo error
+	
 	BACKTRACK(POPDEF_DONE);
 }
 
@@ -610,8 +600,10 @@ static void
 m4_traceon(void)
 {
 	SET_JMP(ID_TRACEON);
+	
+	TRACE(ON);
 
-	STATE.traceon = true;
+	BACKTRACK(TRACEON_DONE);
 }
 
 
@@ -620,102 +612,8 @@ m4_traceoff(void)
 {
 	SET_JMP(ID_TRACEOFF);
 
-	STATE.traceoff = false;
+	TRACE(OFF);
+
+	BACKTRACK(TRACEOFF_DONE);
 }
 
-static void
-call_builtin(int id, size_t nargs, ...)
-{
-	if (nargs > MAX_BUILTIN_ARGV)
-		error_out(ERRMSG_MAX_BUILTIN_ARGV);
-
-	va_list argls;
-	va_start(argls, nargs);
-		
-	
-	clear_state();
-	STATE.builtin_id = id;
-	STATE.argc = nargs;
-
-	size_t arglen, nnargs = 0;
-	uint8_t *arg;
-
-	while (--nargs)
-	{
-		arg = va_arg(ap, uint8_t*);
-		arglen = strlen(arg);
-		if (arglen > MAX_ARGV_LEN)
-			error_out(ERRMSG_LONGARG);
-		memmove(&STATE.argv[nnargs], arg);
-		memmove(&STATE.argvlen[nnargs++], arglen);
-	}
-
-	eval_state();
-	trace_calls();
-}
-
-static inline void
-clear_state(void) { memset(&STATE, 0, sizeof(struct State)); }
-
-static inline void
-eval_state(void) { longjmp(BUILTIN_JBUF[STATE.builtin_id], true); }
-
-static inline void
-check_pool_capacity(void)
-{
-	if (((POOL.allocnum + 1) % POOL_ALLOC_STEP) == 0) {
-		void *newptr = realloc(
-			POOL.macros,
-			(POOL.allocnum + POOL_ALLOC_STEP) * sizeof(uintptr_t));
-		if (!newptr)
-			error_out(ERRMSG_POOL_REALLOC);
-		POOL.macros = (umacro_t**)newptr;
-	}
-
-}
-
-static inline void
-init_pool(void)
-{
-	void *newptr = calloc(POOL.macros, POOL_ALLOC_STEP * sizeof(uintptr_t));
-	if (!newptr)
-		error_out(ERRMSG_POOL_ALLOC);
-	POOL.macros = (umacro_t**)newptr;
-}
-
-static inline void
-kill_pool(void) {  free(POOL.macros);   }
-
-static inline void
-trace_calls(void)
-{
-	if (!STATE.traceon) return;
-
-	fputs(PRISTREAM, M4_TRACE_QUIP);
-	fprintf(PRISTREAM, " -%i- ", STATE.argc);
-	fprintf(PRISTREAM, "%s -> %s%s%s\n", 
-			&STATE.argv[0],
-			&STATE.lquote[0],
-			&STATE.lastexpand[0],
-			&STATE.rquote[0],
-		);
-	
-}
-
-static void
-stream_walker(void)
-{
-	uint8_t *current_line;
-	size_t line_length;
-	while (getline(&current_line, &line_length, INSTREAM) > 0)
-	{
-			
-	
-	}
-}
-
-static void
-trapped_macro(void)
-{
-	
-}
