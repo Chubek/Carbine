@@ -597,6 +597,30 @@ m4_popdef(void)
 }
 
 static void
+m4_dumpdef(void)
+{
+	SET_JMP(iD_DUMPDEF);
+
+	uint8_t *req_name;
+	uint8_t *req_definition;
+	size_t num_req = ARGC;
+
+	while (--num_req)
+	{
+		req_name = ARGV_nth(num_req);
+		req_definition = SYMTABLE_LOOKUP(req_name);
+		OUTPUT_FMT(
+				PRISTREAM, 
+				"%s%s%s -> %s%s%s\n",
+				LQUOTE, req_name, RQUOTE,
+				LQUOTE, req_definition, RQUOTE
+			);	
+	}
+
+	BACKTRACK(DUMPDEF_DONE);
+}
+
+static void
 m4_traceon(void)
 {
 	SET_JMP(ID_TRACEON);
