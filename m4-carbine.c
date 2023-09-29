@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
-#includei <stdbool.h>
+#include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
 #include <limits.h>
@@ -12,7 +12,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <signal.h>
-
+#include <hat-trie/hat-trie.h>
 
 #include "_eval.yy.c"
 #include "m4-carbine.h"
@@ -34,6 +34,8 @@ static struct RuntimeState
 		FILE *instream;
 		FILE *outstream;
 		FILE *errstream;
+		FILE *hold_stream;
+		FILE *null_stream;
 	}
 	IO;
 
@@ -46,14 +48,8 @@ static struct RuntimeState
 
 	static struct Container
 	{
-		static struct ContainerCookie
-		{
-			size_t seek_pos;
-			size_t total_size;
-			size_t realloc_step;
-			uintptr_t mem_buffer;
-		} 
-		SYMTABLE_COOKIE, SYMSTACK_COOKIE;
+		gl_stack *SYMSTACK;
+		gl_hash_map *SYMTABLE;
 	}
 	CONTAINERS;
 
@@ -78,7 +74,8 @@ static struct RuntimeState
 		FILE *STREAMS[NUM_DIVERT];
 		size_t LENGTHS[NUM_DIVERTS];
 		uint8_t *BUFFERS[NUM_DIVERTS];
-		FILE *null_diversion;
+		int divert_num;
+		int undivert_num;
 	}
 	DIVERSIONS;
 	
@@ -90,14 +87,19 @@ static struct RuntimeState
 	}
 	WRAP;
 
-	static struct ParseCookie
+	static struct Syntax
 	{
-		mqd_t comm_channel;
-		pid_t parser_pid;
-		int state_request;
-		int parser_response;
+		uint8_t left_quote[MAX_TOKEN_LEN];
+		uint8_t right_quote[MAX_TOKEN_LEN];
+		uint8_t begin_comment[MAX_TOKEN_LEN];
+		uint8_t end_comment[MAX_TOKEN_LEN];
+		size_t left_quote_len;
+		size_t right_quote_len;
+		size_t begin_comment_len;
+		size_t end_comment_len;
 	}
-	PARSE_COOKIE;
+	SYNTAX;
+
 }
 STATE;
 
@@ -110,15 +112,22 @@ STATE;
 #define INSTREAM	STATE.IO.instream
 #define OUTSTREAM	STATE.IO.outstream
 #define PRISTREAM	STATE.IO.errstream
+#define HOLDSTREAM	STATE.IO.holdstream
+#define NULLSTREAM	STATE.IO.nullstream
+
+#define SWAP_HOLD_STREAM(to_hold, to_replace)				\
+	do {  HOLDSTREAM = to_hold; TO_HOLD = to_replace;  } while (0)
+#define RESTORE_HELD_STREAM(held_stream)				\
+	do { held_stream = HOLDSTREAM; } while (0)
 
 static void
 m4_incr(void)
 {
 	SET_JMP(ID_INCR);
 
-	uint8_t *num = ARGV_nth(1);
-	int64_t inum = strtoll(num, NULL, 10);
-	fprintf(OUTSTREAM, "%ld\n", ++inum);
+	uint8_t *inc_num = ARGV_nth(1);
+	int64_t eval_inc_num = strtoll(inc_num, NULL, 10);
+	OUTPUT_FMT(OUTSTREAM, "%ld", ++eval_inc_num);
 
 	BACKTRACK(INCR_DONE);
 }
@@ -128,9 +137,9 @@ m4_decr(void)
 {
  	SET_JMP(ID_DECR);
 
-	uint8_t *num = ARGV_nth(1);
-	int64_t inum = strtoll(num, NULL, 10);
-	fprintf(OUTSTREAM, "%ld\n", --inum);
+	uint8_t *dec_num = ARGV_nth(1);
+	int64_t eval_dec_num = strtoll(dec_num, NULL, 10);
+	OUTPUT_FMT(OUTSTREAM, "%ld", --eval_dec_num);
 
 	BACKTRACK(DECR_DONE);
 }
@@ -141,8 +150,8 @@ m4_m4wrap(void)
 {	
 	SET_JMP(ID_M4WRAP);
 	
-	uint8_t wraptext = ARGV_nth(1);
-	fputs(wraptext, wrapspace);
+	uint8_t wrap_text = ARGV_nth(1);
+	OUTPUT_FMT(WRAPSTREAM, "%s", wrap_text);
 
 	BACKTRACK(M4WRAP_DONE);
 }
@@ -153,23 +162,19 @@ m4_divert(void)
 {
 	SET_JMP(ID_DIVERT);
 	
-	char *nbuf = ARGV_nth(1);
+	char *buff_num = ARGV_nth(1);
+	DIVERTNUM = atoi(buff_num);
 	
-	if (!(*nbuf))
-		REJECT(ERRID_DIVERT, NO_NBUF);
-	
-	int8_t yynbuf = atoi(nbuf);
-	
-	if (yynbuf > DIVERT_NUM) 
-		REJECT(ERRID_DIVERT, DIVERT_INSUFF);
-	else if (yynbuf < 0) 
+	if (DIVERTNUM > DIVERT_NUM) 
+		// todo errror
+	else if (DIVERTNUM < 0) 
 	{
-		OUTSTREAMhold = OUTSTREAM; OUTSTREAM = nulldivert;
+		SWAP_HOLD_STREAM(OUTSTREAM, NULLSREAM);
 	}
 	else
 	{
-		OUTSTREAMhold = OUTSTREAM; OUTSTREAM = DIVERTS[yynbuf]; 
-		divnum = fileno(OUTSTREAM);
+		FILE *divert_stream = DIVERTSTREAM_nth(eval_buff_num);
+		SWAP_HOLD_STREAM(OUTSTREAM, divert_stream);
 	}
 	
 	BACKTRACK(DIVERT_DONE);
@@ -181,18 +186,18 @@ m4_undivert(void)
 {
 	SET_JMP(ID_UNDIVERT);
 	
-	char *nbuf = ARGV_nth(1);
+	char *buff_num = ARGV_nth(1);
+	UNDIVERTNUM = atoi(buff_num);
 	
-	if (!(*nbuf))
-		longjmp(ERR_JMP[ERRID_UNDIVERT], NO_NBUF);
+	if (UNDIVERTNUM < 0)
+		// todo error
 
-	int8_t yynbuf = atoi(nbuf);
+	FILE *divert_stream = DIVIERTSREAM_nth(UNDIVERTNUM);
+	uint8_t *divert_str = DIVERTSTR_nth(UNDIVERTNUM);
 	
-       	OUTSTREAM = OUTSTREAMhold; divnum = fileno(OUTSTREAM);
-	if (yynbuf < 0) return;
-
-	fputs(DIVERT_STRS[yynbuf], OUTSTREAM);
-	ftruncte(fileno(DIVERTS[yynbuf]), 0);
+	RESTORE_HELD_STREAM(OUTSTREAM);
+	OUTPUT_FMT(OUTSTREAM, "%s", divert_str);
+	ftruncte(divert_stream, 0);
 
 	BACKTRACK(UNDIVERT_DONE);
 }
@@ -203,7 +208,7 @@ m4_divnum(void)
 {
 	SET_JMP(ID_DIVNUM);
 
-	fprintf(OUTSTREAM, "%ld", divnum);
+	OUTPUT_FMT(OUTSTREAM, "%ld", DIVERTNUM);
 
 	BACKTRACK(DIVNUM_DONE);
 }
@@ -214,7 +219,7 @@ m4_dnl(void)
 {
 	SET_JMP(ID_DNL);
 
-	fscanf(INSTREAM, "%*s\n", NULL);
+	INPUT_FMT(INSTREAM, "%*s\n", NULL);
 
 	BACKTRACK(DNL_DONE);
 }
@@ -227,9 +232,12 @@ m4_eval(void)
 {	
 	SET_JMP(ID_EVAL);
 	
-	yyfinal = 0; eval_yy_init(ARGV_nth(1)); eval_yy_parse();
-	
-	fprintf(OUTSTREAM, "%ld", yyfinal);
+	yyfinal = 0;
+       	eval_yy_init(ARGV_nth(1)); 
+	eval_yy_parse();
+	eval_yy_restore();
+
+	OUTPUT_FMT(OUTSTREAM, "%ld", yyfinal);
 
 	BACKTRACK(EVAL_DONE);
 
@@ -243,19 +251,15 @@ m4_ifdef(void)
 {
 	SET_JMP(ID_IFDEF);
 
-	focalsym = ARGV_nth(1); 
-	ifdef = ARGV_nth(2); 
-	ifndef = ARGV_nth(3);
-	
-	if (!(*focalsym))
-		REJECT(ERRID_IFDEF, NO_IFSYM);
-	else if (!(*ifdef))
-		REJECT(ERRID_IFDEF, NO_DEFSYM);
+	uint8_t *focal_symbol = ARGV_nth(1); 
+	uint8_t *ifdef = ARGV_nth(2); 
+	uint8_t *ifndef = ARGV_nth(3);
 
-	cursym = ENTRY_FIND(focalsym);
-	cursym 	
-		? BACKTRACK(IF_DEF)
-	        : BACKTRACK(IF_NDEF);	
+	SYMBOL_EXISTS(focal_symbol) 
+		? OUTPUT_FMT(OUTSTREAM, ATTEMPT_EVAL, ifdef)
+		: OUTPUT_FMT(OUTSTREAM, ATTEMPT_EVAL, ifndef);
+
+	BACKTRACK(IFDEF_DONE);
 }
 
 static void
@@ -300,8 +304,6 @@ m4_index(void)
 {
 	SET_JMP(ID_INDEX);
 
-	if (STATE.argc < )
-		REJECT(ERRID_INDEX, NO_CHAR);
 
 	uint8_t *haystack = ARGV_nth(1), *needle = ARGV_nth(2);
 	size_t idx = strspn(haystack, needle);
@@ -316,8 +318,6 @@ m4_len(void)
 {
 	SET_JMP(ID_LEN);
 
-	if (STATE.argc < LEN_LEAST_ARGC)
-		REJECT(ERRID_LEN, NO_STR);
 
 	uint8_t *subject = ARGV_nth(1);
 	size_t lensubj = strlen(subject);
@@ -334,15 +334,6 @@ m4_mkstemp(void)
 
 	char *temp;
 	int fdesc;
-	if (STATE.argc < MKSTEMP_LEAST_ARGC)
-		temp = DEFAULT_TMP_TEMP;
-	else
-		temp = ARGV_nth(1);
-	if ((fdesc = mkstemp(temp)) < 0)
-		REJECT(ERRID_MKSTEMP, errno);
-	else
-		close(fdesc);
-
 	BACKTRACK(MKSTEMP_DONE);
 }
 
@@ -680,29 +671,20 @@ trace_calls(void)
 	
 }
 
-
-static ssize_t 
-cookie_container_read(void *raw_cookie, char *command, size_t size)
+static void
+stream_walker(void)
 {
-	struct ContainerCookie
-		*baked_cookie = (struct ContainerCookie*)raw_cookie;
-
-	int instruction;
-	uint8_t *name;
-	uint8_t *definition;
-
-	sscanf(command, CNTR_SCAN_FMT, &instruction, &name, &definition);
-
-	if (((based_cookie->total_size + 1) % SYMTAB_STEP) == 0) {
-		void *fresh_pointer = realloc(
-				baked_cookie->mem_buffer,
-				baked_cookie->total_size + SYMTAB_STEP
-			);
-		if (!fresh_pointer)
-			error_out(ERRMSG_MEMORY);
-		else
-			baked_cookie->mem_buffer = fresh_pointer;
+	uint8_t *current_line;
+	size_t line_length;
+	while (getline(&current_line, &line_length, INSTREAM) > 0)
+	{
+			
+	
 	}
-
 }
 
+static void
+trapped_macro(void)
+{
+	
+}
