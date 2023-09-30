@@ -6,6 +6,11 @@ m4_regexp(void)
 	uint8_t *word = ARGV_nth(1);
 	uint8_t *expression = ARGV_nth(2);
 	uint8_t *flags = ARGV_nth(3);
+	uint8_t *api = ARGV_nth(4);
+
+	!u8_strncmp(api, PRCRE, PCRE_LEN)
+		? SET_REGEXP_API(PCRE_API)
+		: SET_REGEXP_API(ERE_API);
 	
 	int FLAGS[2];
 	struct RegexFlag *re_flag;
@@ -23,10 +28,10 @@ m4_regexp(void)
 		}
 	}
 
-	if (regcomp(CC_ERE, expression, ERE_C_FLAGS))
+	if (RE_COMPILE(CC_ERE, expression, ERE_C_FLAGS))
 		// todo error
 	
-	if (regexec(CC_ERE, (const char*)word, MAX_PMATCH, PMATCH, ERE_M_FLAGS))
+	if (RE_EXEC(CC_ERE, (const char*)word, MAX_PMATCH, PMATCH, ERE_M_FLAGS))
 		// todo error
 	
 	BEG_OFST = PMATCH[0].rm_so;
@@ -34,6 +39,9 @@ m4_regexp(void)
 
 	OUTPUT_FMT(OUTSTREAM, "%s{%n,%n}", word, BEG_OFST, END_OFST);
 
+	RE_FREE(CC_RE);
+	REVERT_STANDARD();
 	BACKTRACK(REGEXP_DONE);
 
 }
+
