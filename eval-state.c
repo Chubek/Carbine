@@ -57,6 +57,15 @@ static struct RuntimeState
 		regoff_t end_offset;
 	}
 	INVOKATION;
+
+	static struct RegexApi
+	{
+		(*compiler)(regex_t*, const char*);
+		(*executor)(const regex_t*, const char*, size_t, regmatch_t pmatch[], int);
+		(*errfunc)(int, const regex_t, char *, size_t);
+		(*dealloc)(regex_t);
+	}
+	REGEX_API;
 	
 	static struct JmpBufs
 	{
