@@ -89,14 +89,50 @@ m4_printf(void)
 	NON_STANDARD();
 	SET_JMP(ID_PRINTF);
 
-	size_t num_args = ARGC - 1;
+	size_t num_args = ARGC - 2;
 	uint8_t *format = ARGV_nth(1);
 	uint8_t *va_args[num_args];
 	for (int i = 2; i < num_args; i++)
 		va_args[i] = ARGV_nth(i);
 
-	OUTPUT_FMT(OUTSTREAM, ARGS_ARE_VA, format, va_args, num_args);
+	OUTPUT_FMT(OUTSTREAM, ARGS_ARE_VA, format, &va_args[0], num_args);
 
 	REVERT_STANDARD();
 	BACKTRACK(PRINTF_DONE);	
+}
+
+static void
+m4_shuffle(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_SHUFFLE);
+
+	uint8_t *text = ARGV_nth(1);
+	uint8_t *fried = strfry(text);
+	OUTPUT_FMT(OUTSTREAM, "%s", fried);
+	
+	REVERT_STANDARD();
+	BACKTRACK(SHUFFLE_DONE);
+}
+
+static void
+m4_join(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_CONCAT);
+
+	size_t num_args = ARGC - 2;
+	size_t printed = 2;
+	uint8_t delim = ARGV_nth(1);
+
+	while (printed-- < num_args) {
+		OUTPUT_FMT(OUTSTREAM, "%s", ARGV_nth(printed));
+		printed != num_args 
+			? OUTPUT_FMT(OUTSTREAM, "%s", delim)
+			: NULL;
+	}
+
+	REVERT_STANDARD();
+	BACKTRACK(JOIN_DONE);
+
 }
