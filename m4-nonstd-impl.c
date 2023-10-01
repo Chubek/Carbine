@@ -1,3 +1,4 @@
+static void
 m4_regexp(void)
 {
 	NON_STANDARD();
@@ -45,7 +46,7 @@ m4_regexp(void)
 
 }
 
-
+static void
 m4_exec(void)
 {
 	NON_STANDARD();
@@ -62,7 +63,7 @@ m4_exec(void)
 	BACKTRACK(EXEC_DONE);
 }
 
-
+static void
 m4_date(void)
 {
 	NON_STANDARD();
@@ -79,4 +80,23 @@ m4_date(void)
 
 	REVERT_STANDARD();
 	BACKTRACK(DATE_DONE);
+}
+
+
+static void
+m4_printf(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_PRINTF);
+
+	size_t num_args = ARGC - 1;
+	uint8_t *format = ARGV_nth(1);
+	uint8_t *va_args[num_args];
+	for (int i = 2; i < num_args; i++)
+		va_args[i] = ARGV_nth(i);
+
+	OUTPUT_FMT(OUTSTREAM, ARGS_ARE_VA, format, va_args, num_args);
+
+	REVERT_STANDARD();
+	BACKTRACK(PRINTF_DONE);	
 }
