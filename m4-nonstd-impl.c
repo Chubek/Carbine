@@ -45,3 +45,38 @@ m4_regexp(void)
 
 }
 
+
+m4_exec(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_EXEC);
+
+	uint8_t *command = ARGV_nth(1);
+
+	OPEN_PIPE();
+	EXEC_PIPE(command);
+	OUTPUT_FMT(OUTSTREAM, "%s", LAST_EXEC_STRING);
+	CLOSE_PIPE();
+
+	REVERT_STANDARD();
+	BACKTRACK(EXEC_DONE);
+}
+
+
+m4_date(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_DATE);  
+	
+	uint8_t *format = ARGV_nth(1);
+
+	TIME_EPOCH = time(NULL);
+	TIME_BDOWN = localtime(&TIME_EPOCH);
+
+	if (strftime(TIME_FMTBUFF, MAX_TIMEFMTBUFF, format, TIME_BDOWN) < 0)
+		// todo error 
+	OUTPUT_FMT(OUTSTREAM, "%s", TIME_FMTBUFF);
+
+	REVERT_STANDARD();
+	BACKTRACK(DATE_DONE);
+}

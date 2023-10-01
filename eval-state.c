@@ -20,6 +20,22 @@ static struct RuntimeState
 	}
 	IO;
 
+	static struct ShellPipe
+	{
+		FILE *last_pipe;
+		uint8_t last_exec;
+		size_t last_exec_len;
+	}
+	SHELL_PIPE;
+
+	static struct TimeInfo
+	{
+		struct tm *broken_down;
+		time_t 	   epoch;
+		uint8_t    formatted[MAX_TIMEFMTBUFF];
+	}
+	TIME_INFO;
+
 	static struct Tracer
 	{
 		bool trace_on;
