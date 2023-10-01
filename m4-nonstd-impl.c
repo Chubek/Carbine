@@ -125,7 +125,7 @@ m4_join(void)
 	size_t printed = 2;
 	uint8_t delim = ARGV_nth(1);
 
-	while (printed-- < num_args) {
+	while (printed++ < num_args) {
 		OUTPUT_FMT(OUTSTREAM, "%s", ARGV_nth(printed));
 		printed != num_args 
 			? OUTPUT_FMT(OUTSTREAM, "%s", delim)
@@ -134,5 +134,51 @@ m4_join(void)
 
 	REVERT_STANDARD();
 	BACKTRACK(JOIN_DONE);
+}
 
+static void
+m4_reflect(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_REFLECT);
+
+	// todo reflect
+	
+	REVERT_STANDARD();
+	BACKTRACK(REFLECT_DONE);
+}
+
+static void
+m4_for(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_FOR);
+
+	uint8_t *for_num = ARGV_nth(1);
+	uint8_t *for_action = ARGV_nth(2);
+
+	size_t eval_for_num = strtoull(for_num, NULL, 10);
+
+	while (--eval_for_num)
+		// todo reflect
+
+	REVERT_STANDARD();
+	BACKTRACK(FOR_DONE);
+}
+
+static void
+m4_foreach(void)
+{
+	NON_STANDARD();
+	SET_JMP(ID_FOREACH);
+
+	size_t num_args = ARGC - 2;
+	size_t reflected = 2;
+	uint8_t *foreach_action = ARGV_nth(1);
+	
+	while (reflected++ < num_args)
+		// todo reflect
+	
+	REVERT_STANDARD();
+	BACKTRACK(FOREACH_DONE);
 }
