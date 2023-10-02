@@ -121,15 +121,6 @@ static struct RuntimeState
 	}
 	SYNTAX;
 
-	static struct MemoryManager
-	{
-		struct obstack 	memory_stack;
-		FILE		*book_stream;
-		char		*book_buffer;
-		size_t		book_size;
-	}
-	MEMORY_MANAGER;
-
 }
 STATE;
 
