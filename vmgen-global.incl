@@ -1,0 +1,12 @@
+\ stack definitions:
+\E stack data-stack sp Cell
+
+\ stack prefix definitions
+\E inst-stream stack-prefix #
+
+\ type prefix definitions:
+\E s" long"   single data-stack type-prefix i
+\E s" char *" single data-stack type-prefix a
+\E s" Inst *" single data-stack type-prefix target
+
+
