@@ -1,5 +1,5 @@
 typedef struct AwkArray  awkarr_t;
-	
+typedef enum   AwkArrayTyype awkarrtype_t;
 	
 static inline void
 initialize_awkarray_container(void)
@@ -19,7 +19,7 @@ initialze_awkarray(uint8_t *ident)
 }
 
 static inline void
-push_awkarray(uint8_t *ident, uintptr_t key, uintptr_t value, AwkArrayType type)
+push_awkarray(uint8_t *ident, uintptr_t key, uintptr_t value, awkarrtype_t type) 
 {
 	AArMn_t *array = 
 		(AArMn_t*)hashtable_get(AWKARR_ADDRS, ident);
