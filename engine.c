@@ -44,7 +44,7 @@
    best to build them all and select the fastest instead of hardwiring
    a specific scheme for an architecture.  E.g., scheme 8 is fastest
    for Gforth "make bench" on a 486, whereas scheme 5 is fastest for
-   "carbine.fib.carbine. on an Athlon */
+   "carbine fib.carbine" on an Athlon */
 #ifndef THREADING_SCHEME
 #define THREADING_SCHEME 5
 #endif /* defined(THREADING_SCHEME) */
@@ -159,7 +159,7 @@
 
 #ifndef __GNUC__
 enum {
-#include "carbine.labels.i"
+#include "carbine-labels.i"
 };
 #endif
 
@@ -181,7 +181,7 @@ long engine(Cell *ip0, Cell *sp, char *fp)
 #define spTOS (sp[0])
 #endif
   static Label   labels[] = {
-#include "carbine.labels.i"
+#include "carbine-labels.i"
   };
 #ifdef MORE_VARS
   MORE_VARS
@@ -203,11 +203,11 @@ long engine(Cell *ip0, Cell *sp, char *fp)
 
 #ifdef __GNUC__
   NEXT;
-#include "carbine.vm.i"
+#include "carbine-vm.i"
 #else  
  next_inst:
   switch((*ip++).inst) {
-#include "carbine.vm.i"
+#include "carbine-vm.i"
   default:
     fprintf(stderr,"unknown instruction %d at %p\n", ip[-1], ip-1);
     exit(1);

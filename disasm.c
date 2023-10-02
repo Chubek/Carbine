@@ -28,7 +28,7 @@ void vm_disassemble(Inst *ip, Inst *endp, Label vm_prim[])
 {
   while (ip<endp) {
     fprintf(vm_out,"%p: ",ip);
-#include "carbine.disasm.i"
+#include "carbine-disasm.i"
     {
       fprintf(vm_out,"unknown instruction %p",ip[0].inst);
       ip++;

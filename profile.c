@@ -94,7 +94,7 @@ void postprocess_block(block_count *b)
   block_count *next_block=NULL;
 
   while (next_block == NULL && ip<vmcode_end) {
-#include "mini-profile.i"
+#include "carbine-profile.i"
     /* else */
     {
       add_inst(b,"unknown");
