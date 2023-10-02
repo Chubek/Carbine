@@ -1,0 +1,2 @@
+Memory management shall use GC:
+https://www.hboehm.info/gc/gc_source/gc-8.2.2.tar.gz
