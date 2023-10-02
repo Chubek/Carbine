@@ -1,0 +1,3 @@
+#include "vmgen-global.incl"
+#include "awk-vm-spec.vmg"
+#include "sh-vm-spec.vmg"
