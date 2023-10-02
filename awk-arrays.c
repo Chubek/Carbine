@@ -34,6 +34,8 @@ delete_awkarray(uint8_t *ident)
 {
 	awkarr_t *array =
 		(awkarr_t*)hashtable_get(AWKARRAY_ADDRS, ident);
+	array->key = NULL;
+	array->value = NULL;
 	array->deleted = true;
 	
 }
