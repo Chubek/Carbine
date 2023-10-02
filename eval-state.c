@@ -128,6 +128,7 @@ static struct RuntimeState
         	{
 	                uintptr_t key;
                 	uintptr_t value;
+			bool deleted;
         	        enum AwkArrayType { INT, STR } value_type;
 	        }
         	**AWK_ARRAY;
