@@ -47,7 +47,7 @@ m4_regexp(void)
 }
 
 static void
-m4_exec(void)
+m4_m4exec(void)
 {
 	NON_STANDARD();
 	SET_JMP(ID_EXEC);
@@ -182,3 +182,5 @@ m4_foreach(void)
 	REVERT_STANDARD();
 	BACKTRACK(FOREACH_DONE);
 }
+
+
