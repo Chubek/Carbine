@@ -1,0 +1,13 @@
+<:
+open(M4_BUILTINS_FILE, "<", "m4_builtins.ls";
+
+my $id = 0;
+for (chomp($line = <M4_BUILTINS_FILE>))
+{
+	print "#define ", "M4_", $line, " ", $id, "\n";
+	print "#define ", $line, " ", $id++, "\n";
+}
+
+close M4_BUILTINS_FILE;
+
+:>
