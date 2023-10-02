@@ -1,0 +1,29 @@
+#define M4_IDENT 	"m4-ident"
+#define M4_LPAREN 	"m4-args"
+#define M4_BYPASS 	"m4-bypass"
+
+static void
+m4_ident(uintptr_t inst, ...);
+
+static void
+m4_args(uintptr_t inst, ...);
+
+static void
+m4_bypass(uintptr_t inst, ...);
+
+<:
+
+$GPERF_HTABLE_DEF = << '__EOS';
+%struct-type
+%switch=${SWITCH_NUM}
+%define hash-function-name M4_LEXER_LUT
+
+struct m4LexerFnLut { char *name; void (*m4lexfn_t)(uintptr_t, ...) lexfn; };
+%%
+m4-ident, m4_ident
+m4-args, m4_args
+m4-bypass, m4_bypass
+__EOS
+
+
+:>
