@@ -121,6 +121,20 @@ static struct RuntimeState
 	}
 	SYNTAX;
 
+	static struct AwkArrays
+	{	
+	        static struct AwkArray
+        	{
+	                uintptr_t key;
+                	uintptr_t value;
+        	        enum AwkArrayType { INT, STR } value_type;
+	        }
+        	**AWK_ARRAY;
+	        gl_hashmap_t *addresses;
+        	size_t next_index;
+	}
+	AWK_ARRAYS;
+
 }
 STATE;
 
