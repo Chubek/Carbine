@@ -2,6 +2,8 @@
 
 %struct-type
 %switch=$SWITHCH_NUM
+%define lookup-function-name M4PERF_LOOKUP
+
 
 struct m4Builtin { char *name; int num_args_min, num_args_max jmp_id; };
 
