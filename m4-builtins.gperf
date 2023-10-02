@@ -23,7 +23,7 @@ PRINT: while (chomp($line = <M4_BUILTINS>))
 	(my $name, my $min_args, my $max_args) = split(/,\x20?/, $line);
 	$btinidents{$name} = $jmpid;
 	print $name, $SEP, $min_args, $SEP, $max_args, $SEP, $jmpid++;
-	print "\n";
+	print "\n" if defined $line;
 }
 
 close M4_BUILTINS;
