@@ -1,56 +1,63 @@
-static inline awk_numeric_t
-awk_atan2(awk_numeric_t y, awk_numeric_t x)
+typedef union AwkNumeric
 {
-	return (awk_numeric_t) atan2l((long double)y, (long double)x);
+	int64_t i;
+	long double f;
+}
+awknum_t;
+	
+static inline awknum_t
+awk_atan2(awknum_t y, awknum_t x)
+{
+	awknum_t res; res.f = atan2l(y.f, x.f); return res;
 }
 
-static inline awk_numeric_t
-awk_cos(awk_numeric_t x)
+static inline awknum_t
+awk_cos(awknum_t x)
 {
-	return (awk_numeric_t) cosl((long double)x);	
+	awknum_t res; res.f = cosl(x.f); return res;	
 }
 
-static inline awk_numeric_t
-awk_sin(awk_numeric_t x)
+static inline awknum_t
+awk_sin(awknum_t x)
 {
-	return (awk_numeric_t) sinl((long double)x);
+	awknum_t res; res.f = sinl(x.f); return res;
 }
 
-static inline awk_numeric_t
-awk_exp(awk_numeric_t x)
+static inline awknum_t
+awk_exp(awknum_t x)
 {
-	return (awk_numeric_t) expl((long double)x);
+	awknum_t res; res.f = expl(x.f); return res;
 }
 
-static inline awk_numeric_t
-awk_log(awk_numeric_t x)
+static inline awknum_t
+awk_log(awknum_t x)
 {
-	return (awk_numeric_t) logl((long double)x);
+	awknum_t res; res.f = logl(x.f); return res;
 }
 
-static inline awk_numeric_t
-awk_sqrt(awk_numeric_t x)
+static inline awknum_t
+awk_sqrt(awknum_t x)
 {
-	return (awk_numeric_t) sqrtl((long double)x);
+	awknum_t res; res.f = sqrtl(x.f); return res;
 }
 
 
-static inline awk_numeric_t
-awk_int(awk_numeric_t x)
+static inline awknum_t
+awk_int(awknum_t x)
 {
-	return (awk_numeric_t) (intmax_t)((long double)x);
+	awknum_t res; res.i = (intmax_t)(x.f); return res;
 }
 
-static inline awk_numeric_t
+static inline awknum_t
 awk_rand(void)
 {
-	return (awk_numeric_t) rand();
+	awknum_t res; res.i = rand(); return res;
 }
 
-static inline awk_numeric_t
-awk_srand(awk_numeric_t seed)
+static inline awknum_t
+awk_srand(awknum_t seed)
 {
-	return (awk_numeric_t) srand((uintmax_t)seed);
+	awknum_t res; res.i = srand((uintmax_t)seed); return res;
 }
 
 
