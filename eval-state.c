@@ -90,6 +90,7 @@ static struct RuntimeState
 		jmp_buf ERRORS[NUM_ERRORS];
 	} 
 	NONLOC_JMPBUFS;
+
 	static struct Diversions
 	{
 		FILE *STREAMS[NUM_DIVERT];
@@ -134,7 +135,15 @@ static struct RuntimeState
         	size_t next_index;
 	}
 	AWK_ARRAYS;
-
+	
+	static struct m4Parser
+	{
+		uint8_t *current_line;
+		uint8_t *formatstr;
+		size_t current_line_len;
+		int current_id;
+	}
+	M4_PARSER;
 }
 STATE;
 
