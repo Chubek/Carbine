@@ -1,14 +1,12 @@
-#!/usr/bin/env -S bash -c 'eperl -d SWTICH_NUM=${M4PERF_SWITCHNUM:-10} $0 | gperf'
+#!/usr/bin/env -S bash -c 'eperl -D SWITCH_NUM=${M4PERF_SWITCHNUM:-10} $0 | gperf'
 
 %struct-type
-%switch=$SWITHCH_NUM
+%switch=<: print $ENV{"SWITCH_NUM"} :>
 %define lookup-function-name M4PERF_LOOKUP
 
 
 struct m4Builtin { char *name; int num_args_min, num_args_max jmp_id; };
-
 %%
-
 <:
 
 open(M4_BUILTINS, "<", "m4-builtins.csv");
@@ -23,16 +21,14 @@ PRINT: while (chomp($line = <M4_BUILTINS>))
 	(my $name, my $min_args, my $max_args) = split(/,\x20?/, $line);
 	$btinidents{$name} = $jmpid;
 	print $name, $SEP, $min_args, $SEP, $max_args, $SEP, $jmpid++;
-	print "\n" if defined $line;
+	print "\n" if $jmpid < 38;
 }
 
 close M4_BUILTINS;
 _
 
 :>
-
 %%
-
 <:
 
 while (($ident, $jmp_id) = each %btinidents)

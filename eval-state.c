@@ -129,7 +129,7 @@ static struct RuntimeState
 	                uintptr_t key;
                 	uintptr_t value;
 			bool deleted;
-        	        enum AwkArrayType { INT, STR, NODE } value_type;
+        	        enum AwkArrayType { INT, STR, NODE} value_type;
 	        }
         	**AWK_ARRAY;
 	        gl_hashmap_t *addresses;
@@ -140,9 +140,11 @@ static struct RuntimeState
 	static struct m4Parser
 	{
 		uint8_t *current_line;
-		uint8_t *format_string;
+		uint8_t *current_token;
+		uint8_t *next_space_idx;
 		size_t current_line_len;
-		int current_id;
+		int current_id_jmp;
+		bool eof_reached;
 	}
 	M4_PARSER;
 }
